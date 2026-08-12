@@ -74,4 +74,5 @@ public class User {
 	@OneToMany(mappedBy = "user")
 	@ToString.Exclude
 	private List<Payment> payments;
+
 }

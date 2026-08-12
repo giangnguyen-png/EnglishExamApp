@@ -54,7 +54,7 @@ public class TestAttempt {
 	@ToString.Exclude
 	private Exam exam;
 	@ManyToOne
-	@JoinColumn(name = "session_id", nullable = false)
+	@JoinColumn(name = "session_id")
 	@ToString.Exclude
 	private MockSession session;
 	@OneToMany(mappedBy = "attempt", cascade = CascadeType.ALL, orphanRemoval = true)
