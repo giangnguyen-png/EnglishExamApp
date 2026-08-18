@@ -10,7 +10,6 @@ import com.englishApp.exam.model.MockSession;
 import com.englishApp.exam.model.SessionRegistration;
 import com.englishApp.exam.model.User;
 import com.englishApp.exam.model.enums.MockSessionStatus;
-import com.englishApp.exam.model.enums.RegisterStatus;
 import com.englishApp.exam.repository.MockSessionRepository;
 import com.englishApp.exam.repository.SessionRegistrationRepository;
 import com.englishApp.exam.repository.UserRepository;
@@ -44,14 +43,20 @@ public class SessionRegistrationServiceImpl implements SessionRegistrationServic
 		SessionRegistration registration = new SessionRegistration();
 		registration.setSession(session);
 		registration.setUser(user);
-		registration.setStatus(RegisterStatus.REGISTERED);
 		registration.setCandidateNumber(nextCandidateNumber(registrations));
 		return this.sessionRegistrationRepository.save(registration);
 	}
 
-	public void cancelRegistration(Integer registrationId) {
-		SessionRegistration registration = this.sessionRegistrationRepository.findById(registrationId)
+	public SessionRegistration findById(Integer registrationId) {
+		return this.sessionRegistrationRepository.findById(registrationId)
 				.orElseThrow(() -> new RuntimeException("Session registration not found"));
+	}
+
+	public void cancelRegistration(Integer registrationId) {
+		SessionRegistration registration = this.findById(registrationId);
+		if (registration.getSession().getStatus() != MockSessionStatus.PENDING) {
+			throw new RuntimeException("Registration cannot be cancelled after the session starts");
+		}
 		this.sessionRegistrationRepository.delete(registration);
 	}
 
@@ -73,7 +78,8 @@ public class SessionRegistrationServiceImpl implements SessionRegistrationServic
 		if (session.getStatus() != MockSessionStatus.PENDING) {
 			throw new RuntimeException("Session is not open for registration");
 		}
-		if (session.getRegistrationDeadline() != null && session.getRegistrationDeadline().isBefore(LocalDateTime.now())) {
+		if (session.getRegistrationDeadline() != null
+				&& session.getRegistrationDeadline().isBefore(LocalDateTime.now())) {
 			throw new RuntimeException("Session registration deadline has passed");
 		}
 	}

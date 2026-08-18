@@ -7,6 +7,8 @@ import com.englishApp.exam.model.SessionRegistration;
 public interface SessionRegistrationService {
 	SessionRegistration registerSession(Integer sessionId, Integer userId);
 
+	SessionRegistration findById(Integer registrationId);
+
 	void cancelRegistration(Integer registrationId);
 
 	List<SessionRegistration> findByUser(Integer userId);

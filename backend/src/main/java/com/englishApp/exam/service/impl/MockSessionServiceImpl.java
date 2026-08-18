@@ -41,6 +41,9 @@ public class MockSessionServiceImpl implements MockSessionService {
 
 	public MockSession updateSession(Integer id, MockSession updatedSession) {
 		MockSession session = this.findById(id);
+		if (session.getStatus() != MockSessionStatus.PENDING) {
+			throw new RuntimeException("Only pending sessions can be updated");
+		}
 		validateSession(updatedSession);
 		if (!session.getRoomCode().equals(updatedSession.getRoomCode())
 				&& this.mockSessionRepository.existsByRoomCode(updatedSession.getRoomCode())) {
@@ -62,6 +65,9 @@ public class MockSessionServiceImpl implements MockSessionService {
 
 	public void deleteSession(Integer id) {
 		MockSession session = this.findById(id);
+		if (session.getStatus() != MockSessionStatus.PENDING) {
+			throw new RuntimeException("Only pending sessions can be deleted");
+		}
 		this.mockSessionRepository.delete(session);
 	}
 
@@ -73,22 +79,34 @@ public class MockSessionServiceImpl implements MockSessionService {
 		return this.mockSessionRepository.findAll();
 	}
 
+	public List<MockSession> findByExpert(Integer expertId) {
+		if (!this.userRepository.existsById(expertId)) {
+			throw new RuntimeException("Expert not found");
+		}
+		return this.mockSessionRepository.findByExpertId(expertId);
+	}
+
 	public List<MockSession> findAvailableSessions() {
 		LocalDateTime now = LocalDateTime.now();
-		return this.mockSessionRepository.findByStatus(MockSessionStatus.PENDING).stream()
-				.filter(session -> session.getRegistrationDeadline() == null
-						|| session.getRegistrationDeadline().isAfter(now))
+		return this.mockSessionRepository.findByStatus(MockSessionStatus.PENDING).stream().filter(
+				session -> session.getRegistrationDeadline() == null || session.getRegistrationDeadline().isAfter(now))
 				.toList();
 	}
 
 	public MockSession startSession(Integer id) {
 		MockSession session = this.findById(id);
+		if (session.getStatus() != MockSessionStatus.PENDING) {
+			throw new RuntimeException("Only pending sessions can be started");
+		}
 		session.setStatus(MockSessionStatus.ONGOING);
 		return this.mockSessionRepository.save(session);
 	}
 
 	public MockSession finishSession(Integer id) {
 		MockSession session = this.findById(id);
+		if (session.getStatus() != MockSessionStatus.ONGOING) {
+			throw new RuntimeException("Only ongoing sessions can be finished");
+		}
 		session.setStatus(MockSessionStatus.COMPLETED);
 		return this.mockSessionRepository.save(session);
 	}

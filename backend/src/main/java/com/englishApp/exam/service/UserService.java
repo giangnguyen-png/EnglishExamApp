@@ -7,6 +7,8 @@ public interface UserService {
 
 	User findById(Integer id);
 
+	User findByUsername(String username);
+
 	User getProfile(Integer userId);
 
 	User updateProfile(Integer userId, User updatedUser);

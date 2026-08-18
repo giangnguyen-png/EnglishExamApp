@@ -4,12 +4,8 @@ import java.time.LocalDateTime;
 
 import org.hibernate.annotations.CreationTimestamp;
 
-import com.englishApp.exam.model.enums.RegisterStatus;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -17,7 +13,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -38,9 +33,6 @@ public class SessionRegistration {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Integer id;
 	private Integer candidateNumber;
-	@Enumerated(EnumType.STRING)
-	@NotNull
-	private RegisterStatus status;
 	@Column(name = "registered_at")
 	@CreationTimestamp
 	private LocalDateTime registeredAt;

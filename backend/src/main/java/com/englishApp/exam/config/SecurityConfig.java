@@ -36,14 +36,12 @@ public class SecurityConfig {
 
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-		http
-				.csrf(csrf -> csrf.disable())
+		http.csrf(csrf -> csrf.disable())
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-				.authorizeHttpRequests(auth -> auth
-						.requestMatchers("/api/auth/login").permitAll()
-						.anyRequest().authenticated())
-				.oauth2ResourceServer(oauth2 -> oauth2
-						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+				.authorizeHttpRequests(auth -> auth.requestMatchers("/api/auth/**", "/error").permitAll()
+						.requestMatchers("/api/expert/**").hasRole("EXPERT").anyRequest().authenticated())
+				.oauth2ResourceServer(
+						oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
 
 		return http.build();
 	}
@@ -54,14 +52,16 @@ public class SecurityConfig {
 	}
 
 	@Bean
-	AuthenticationProvider authenticationProvider(UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
+	AuthenticationProvider authenticationProvider(UserDetailsService userDetailsService,
+			PasswordEncoder passwordEncoder) {
 		DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
 		provider.setPasswordEncoder(passwordEncoder);
 		return provider;
 	}
 
 	@Bean
-	AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
+	AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration)
+			throws Exception {
 		return authenticationConfiguration.getAuthenticationManager();
 	}
 

@@ -14,4 +14,6 @@ public interface UserResponseService {
 	UserResponse submitSpeaking(Integer attemptId, Integer questionId, MultipartFile audioFile);
 
 	List<UserResponse> findByAttempt(Integer attemptId);
+
+	List<UserResponse> findSpeakingResponsesBySession(Integer sessionId);
 }

@@ -14,4 +14,6 @@ public interface TestAttemptRepository extends JpaRepository<TestAttempt, Intege
 	List<TestAttempt> findBySessionId(Integer sessionId);
 
 	List<TestAttempt> findByUserIdOrderByCreatedAtDesc(Integer userId);
+
+	boolean existsByUserIdAndSessionId(Integer userId, Integer sessionId);
 }

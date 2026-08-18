@@ -4,16 +4,19 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.englishApp.exam.model.User;
+import com.englishApp.exam.repository.RoleRepository;
 import com.englishApp.exam.repository.UserRepository;
 import com.englishApp.exam.service.UserService;
 
 @Service
 public class UserServiceImpl implements UserService {
 	private final UserRepository userRepository;
+	private final RoleRepository roleRepository;
 	private final PasswordEncoder passwordEncoder;
 
-	public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+	public UserServiceImpl(UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder) {
 		this.userRepository = userRepository;
+		this.roleRepository = roleRepository;
 		this.passwordEncoder = passwordEncoder;
 	}
 
@@ -26,12 +29,17 @@ public class UserServiceImpl implements UserService {
 			throw new RuntimeException("Email already exists");
 		}
 	
+		user.setRole(this.roleRepository.findByName("USER").orElseThrow(() -> new RuntimeException("Default role not found")));
 		user.setPassword(this.passwordEncoder.encode(user.getPassword()));
 		return this.userRepository.save(user);
 	}
 
 	public User findById(Integer id) {
 		return this.userRepository.findById(id).orElseThrow(() -> new RuntimeException("User not found"));
+	}
+
+	public User findByUsername(String username) {
+		return this.userRepository.findByUsername(username).orElseThrow(() -> new RuntimeException("User not found"));
 	}
 
 	public User getProfile(Integer userId) {

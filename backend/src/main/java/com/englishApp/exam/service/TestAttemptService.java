@@ -10,6 +10,8 @@ public interface TestAttemptService {
 
 	TestAttempt submitAttempt(Integer attemptId);
 
+	TestAttempt gradeSpeakingAttempt(Integer attemptId, Integer expertId, BigDecimal score);
+
 	TestAttempt findById(Integer id);
 
 	List<TestAttempt> findByUser(Integer userId);

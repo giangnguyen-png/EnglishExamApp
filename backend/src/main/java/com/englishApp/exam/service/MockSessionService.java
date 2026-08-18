@@ -15,6 +15,8 @@ public interface MockSessionService {
 
 	List<MockSession> findAll();
 
+	List<MockSession> findByExpert(Integer expertId);
+
 	List<MockSession> findAvailableSessions();
 
 	MockSession startSession(Integer id);
