@@ -31,7 +31,7 @@ class AuthService {
     final data = response.data as Map<String, dynamic>;
     final token = data['accessToken'] as String?;
     if (token == null || token.isEmpty) {
-      throw Exception('Backend khong tra ve accessToken.');
+      throw Exception('Backend không trả về accessToken.');
     }
 
     await saveToken(token);

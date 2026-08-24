@@ -4,8 +4,9 @@ import '../../models/attempt.dart';
 import '../../models/exam.dart';
 import '../../models/mock_session.dart';
 import '../../services/api_service.dart';
-import '../../services/exam_service.dart';
+import '../../services/attempt_service.dart';
 import '../../services/mock_session_service.dart';
+import '../../widgets/state_views.dart';
 import '../test/test_screen.dart';
 
 class MyRegistrationsScreen extends StatefulWidget {
@@ -17,7 +18,7 @@ class MyRegistrationsScreen extends StatefulWidget {
 
 class _MyRegistrationsScreenState extends State<MyRegistrationsScreen> {
   final _mockSessionService = MockSessionService();
-  final _examService = ExamService();
+  final _attemptService = AttemptService();
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -106,7 +107,7 @@ class _MyRegistrationsScreenState extends State<MyRegistrationsScreen> {
       final Attempt attempt = await _mockSessionService.startPremiumAttempt(
         registration.sessionId,
       );
-      final Exam exam = await _examService.getExamDetail(attempt.examId);
+      final Exam exam = await _attemptService.getAttemptExam(attempt.attemptId);
       if (!mounted) return;
       Navigator.push(
         context,
@@ -138,29 +139,19 @@ class _MyRegistrationsScreenState extends State<MyRegistrationsScreen> {
   }
 
   Widget _buildBody() {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) {
+      return const LoadingView(message: 'Đang tải ca thi đã đăng ký...');
+    }
 
     if (_errorMessage != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_errorMessage!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: _loadRegistrations,
-                child: const Text('Thử lại'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return ErrorView(message: _errorMessage!, onRetry: _loadRegistrations);
     }
 
     if (_registrations.isEmpty) {
-      return const Center(child: Text('Bạn chưa đăng ký ca thi nào.'));
+      return const EmptyState(
+        icon: Icons.badge,
+        message: 'Bạn chưa đăng ký ca thi nào.',
+      );
     }
 
     return RefreshIndicator(
@@ -175,16 +166,38 @@ class _MyRegistrationsScreenState extends State<MyRegistrationsScreen> {
             registration.registrationId,
           );
           return Card(
-            child: ListTile(
-              title: Text(registration.examTitle),
-              subtitle: Text(
-                'Phòng ${registration.roomCode}\n'
-                'SBD ${registration.candidateNumber}\n'
-                '${_formatDateTime(registration.startTime)}\n'
-                '${registration.status}',
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    registration.examTitle,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Column(
+                      children: [
+                        const Text('Số báo danh'),
+                        Text(
+                          registration.candidateNumber.toString().padLeft(
+                            2,
+                            '0',
+                          ),
+                          style: Theme.of(context).textTheme.displaySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Phòng ${registration.roomCode}'),
+                  Text(formatDateTime(registration.startTime)),
+                  Text(_statusLabel(registration.status)),
+                  const SizedBox(height: 12),
+                  _buildAction(registration, isBusy) ?? const SizedBox.shrink(),
+                ],
               ),
-              isThreeLine: true,
-              trailing: _buildAction(registration, isBusy),
             ),
           );
         },
@@ -216,11 +229,15 @@ class _MyRegistrationsScreenState extends State<MyRegistrationsScreen> {
   }
 }
 
-String _formatDateTime(String raw) {
-  final date = DateTime.tryParse(raw);
-  if (date == null) return raw.isEmpty ? 'Chưa có' : raw;
-  return '${date.day.toString().padLeft(2, '0')}/'
-      '${date.month.toString().padLeft(2, '0')}/${date.year} '
-      '${date.hour.toString().padLeft(2, '0')}:'
-      '${date.minute.toString().padLeft(2, '0')}';
+String _statusLabel(String status) {
+  switch (status) {
+    case 'PENDING':
+      return 'Trạng thái: Sắp diễn ra';
+    case 'ONGOING':
+      return 'Trạng thái: Đang thi';
+    case 'COMPLETED':
+      return 'Trạng thái: Đã kết thúc';
+    default:
+      return 'Trạng thái: $status';
+  }
 }

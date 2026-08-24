@@ -20,6 +20,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _authService = AuthService();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   String? _errorMessage;
 
   @override
@@ -53,7 +55,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Dang ky thanh cong. Vui long dang nhap.'),
+          content: Text('Đăng ký thành công. Vui lòng đăng nhập.'),
         ),
       );
       Navigator.pop(context);
@@ -77,7 +79,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Dang ky')),
+      appBar: AppBar(title: const Text('Đăng ký')),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -88,15 +90,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Text(
+                    'Tạo tài khoản',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Bắt đầu luyện thi IELTS cùng IELTS AI',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 24),
                   TextFormField(
-                    controller: _usernameController,
+                    controller: _fullNameController,
                     decoration: const InputDecoration(
-                      labelText: 'Username',
-                      border: OutlineInputBorder(),
+                      labelText: 'Họ tên',
+                      prefixIcon: Icon(Icons.badge_outlined),
                     ),
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
-                        return 'Vui long nhap username';
+                        return 'Vui lòng nhập họ tên';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _usernameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Tên đăng nhập',
+                      prefixIcon: Icon(Icons.person_outline),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Vui lòng nhập tên đăng nhập';
                       }
                       return null;
                     },
@@ -106,30 +134,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     controller: _emailController,
                     decoration: const InputDecoration(
                       labelText: 'Email',
-                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.email_outlined),
                     ),
                     keyboardType: TextInputType.emailAddress,
                     validator: (value) {
                       final email = value?.trim() ?? '';
                       if (email.isEmpty) {
-                        return 'Vui long nhap email';
+                        return 'Vui lòng nhập email';
                       }
                       if (!_isValidEmail(email)) {
-                        return 'Email khong hop le';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _fullNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Full name',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Vui long nhap full name';
+                        return 'Email không hợp lệ';
                       }
                       return null;
                     },
@@ -137,17 +151,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _passwordController,
-                    decoration: const InputDecoration(
-                      labelText: 'Password',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: 'Mật khẩu',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        onPressed: () => setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        }),
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                      ),
                     ),
-                    obscureText: true,
+                    obscureText: _obscurePassword,
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'Vui long nhap password';
+                        return 'Vui lòng nhập mật khẩu';
                       }
                       if (value.length < 6) {
-                        return 'Password phai co it nhat 6 ky tu';
+                        return 'Mật khẩu phải có ít nhất 6 ký tự';
                       }
                       return null;
                     },
@@ -155,17 +179,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _confirmPasswordController,
-                    decoration: const InputDecoration(
-                      labelText: 'Confirm password',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: 'Nhập lại mật khẩu',
+                      prefixIcon: const Icon(Icons.lock_reset),
+                      suffixIcon: IconButton(
+                        onPressed: () => setState(() {
+                          _obscureConfirmPassword = !_obscureConfirmPassword;
+                        }),
+                        icon: Icon(
+                          _obscureConfirmPassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                      ),
                     ),
-                    obscureText: true,
+                    obscureText: _obscureConfirmPassword,
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'Vui long nhap lai password';
+                        return 'Vui lòng nhập lại mật khẩu';
                       }
                       if (value != _passwordController.text) {
-                        return 'Password nhap lai khong khop';
+                        return 'Mật khẩu nhập lại không khớp';
                       }
                       return null;
                     },
@@ -188,11 +222,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Dang ky'),
+                        : const Text('Đăng ký'),
                   ),
                   TextButton(
                     onPressed: _isLoading ? null : () => Navigator.pop(context),
-                    child: const Text('Quay lai dang nhap'),
+                    child: const Text('Quay lại đăng nhập'),
                   ),
                 ],
               ),

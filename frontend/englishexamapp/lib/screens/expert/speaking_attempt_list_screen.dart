@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/mock_session.dart';
 import '../../services/api_service.dart';
 import '../../services/expert_service.dart';
+import '../../widgets/state_views.dart';
 import 'speaking_grading_screen.dart';
 
 class SpeakingAttemptListScreen extends StatefulWidget {
@@ -54,13 +55,16 @@ class _SpeakingAttemptListScreenState extends State<SpeakingAttemptListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Speaking Attempts')),
+      appBar: AppBar(title: const Text('Bài Speaking')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView(message: 'Đang tải bài Speaking...')
           : _errorMessage != null
           ? Center(child: Text(_errorMessage!))
           : _attempts.isEmpty
-          ? const Center(child: Text('Chưa có bài Speaking.'))
+          ? const EmptyState(
+              icon: Icons.mic_none,
+              message: 'Chưa có bài Speaking cần chấm.',
+            )
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: _attempts.length,

@@ -42,16 +42,150 @@ public class ScoringServiceImpl implements ScoringService {
 	}
 
 	public BigDecimal calculateObjectiveBand(Integer attemptId, SkillType skillType) {
+		if (skillType != SkillType.LISTENING && skillType != SkillType.READING) {
+			throw new RuntimeException("Objective band can only be calculated for Listening or Reading");
+		}
 		TestAttempt attempt = findAttempt(attemptId);
 		long totalQuestions = this.questionRepository
 				.countByExamSectionExamIdAndExamSectionSkillType(attempt.getExam().getId(), skillType);
-		if (totalQuestions == 0) {
-			return BigDecimal.ZERO.setScale(1);
+		if (totalQuestions != 40) {
+			throw new RuntimeException("Listening and Reading exams must contain exactly 40 questions");
 		}
 		List<UserResponse> responses = this.userResponseRepository.findByAttemptId(attemptId).stream()
 				.filter(response -> response.getQuestion().getExamSection().getSkillType() == skillType).toList();
+		long answeredCount = responses.stream().filter(this::isAnsweredResponse).count();
 		long correctCount = responses.stream().filter(this::isCorrectResponse).count();
-		return roundToHalfBand((correctCount * 9.0) / totalQuestions);
+		if (answeredCount == 0) {
+			return band(0.0);
+		}
+		if (correctCount == 0) {
+			return band(1.0);
+		}
+		return convertObjectiveRawScoreToBand(correctCount, skillType);
+	}
+
+	private BigDecimal convertObjectiveRawScoreToBand(long correctCount, SkillType skillType) {
+		if (skillType == SkillType.LISTENING) {
+			return convertListeningRawScore(correctCount);
+		}
+		if (skillType == SkillType.READING) {
+			return convertAcademicReadingRawScore(correctCount);
+		}
+		throw new RuntimeException("Objective band can only be calculated for Listening or Reading");
+	}
+
+	private BigDecimal convertListeningRawScore(long correctCount) {
+		if (correctCount >= 39) {
+			return band(9.0);
+		}
+		if (correctCount >= 37) {
+			return band(8.5);
+		}
+		if (correctCount >= 35) {
+			return band(8.0);
+		}
+		if (correctCount >= 32) {
+			return band(7.5);
+		}
+		if (correctCount >= 30) {
+			return band(7.0);
+		}
+		if (correctCount >= 26) {
+			return band(6.5);
+		}
+		if (correctCount >= 23) {
+			return band(6.0);
+		}
+		if (correctCount >= 18) {
+			return band(5.5);
+		}
+		if (correctCount >= 16) {
+			return band(5.0);
+		}
+		if (correctCount >= 13) {
+			return band(4.5);
+		}
+		if (correctCount >= 11) {
+			return band(4.0);
+		}
+		if (correctCount >= 8) {
+			return band(3.5);
+		}
+		if (correctCount >= 6) {
+			return band(3.0);
+		}
+		if (correctCount >= 4) {
+			return band(2.5);
+		}
+		if (correctCount == 3) {
+			return band(2.0);
+		}
+		if (correctCount == 2) {
+			return band(1.5);
+		}
+		if (correctCount == 1) {
+			return band(1.0);
+		}
+		return band(0.0);
+	}
+
+	private BigDecimal convertAcademicReadingRawScore(long correctCount) {
+		if (correctCount >= 39) {
+			return band(9.0);
+		}
+		if (correctCount >= 37) {
+			return band(8.5);
+		}
+		if (correctCount >= 35) {
+			return band(8.0);
+		}
+		if (correctCount >= 33) {
+			return band(7.5);
+		}
+		if (correctCount >= 30) {
+			return band(7.0);
+		}
+		if (correctCount >= 27) {
+			return band(6.5);
+		}
+		if (correctCount >= 23) {
+			return band(6.0);
+		}
+		if (correctCount >= 20) {
+			return band(5.5);
+		}
+		if (correctCount >= 16) {
+			return band(5.0);
+		}
+		if (correctCount >= 13) {
+			return band(4.5);
+		}
+		if (correctCount >= 10) {
+			return band(4.0);
+		}
+		if (correctCount >= 8) {
+			return band(3.5);
+		}
+		if (correctCount >= 6) {
+			return band(3.0);
+		}
+		if (correctCount >= 4) {
+			return band(2.5);
+		}
+		if (correctCount == 3) {
+			return band(2.0);
+		}
+		if (correctCount == 2) {
+			return band(1.5);
+		}
+		if (correctCount == 1) {
+			return band(1.0);
+		}
+		return band(0.0);
+	}
+
+	private BigDecimal band(double value) {
+		return BigDecimal.valueOf(value).setScale(1, RoundingMode.HALF_UP);
 	}
 
 	public BigDecimal calculateWritingBand(Integer attemptId) {
@@ -130,5 +264,9 @@ public class ScoringServiceImpl implements ScoringService {
 				.collect(Collectors.groupingBy(id -> id, Collectors.counting()));
 		return selectedAnswerIds.size() == correctAnswerIds.size()
 				&& correctAnswerIds.stream().allMatch(id -> selectedCounts.getOrDefault(id, 0L) == 1L);
+	}
+
+	private boolean isAnsweredResponse(UserResponse response) {
+		return !this.userResponseChoiceRepository.findByResponseId(response.getId()).isEmpty();
 	}
 }

@@ -4,6 +4,7 @@ import '../../models/exam.dart';
 import '../../services/api_service.dart';
 import '../../services/attempt_service.dart';
 import '../../services/exam_service.dart';
+import '../../widgets/state_views.dart';
 import '../test/test_screen.dart';
 
 class ExamDetailScreen extends StatefulWidget {
@@ -61,38 +62,22 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
     final exam = _exam;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Exam Detail')),
+      appBar: AppBar(title: const Text('Chi tiết đề thi')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView(message: 'Đang tải đề thi...')
           : _errorMessage != null
           ? _buildError()
           : exam == null
-          ? const Center(child: Text('Khong tim thay de thi.'))
+          ? const EmptyState(
+              icon: Icons.search_off,
+              message: 'Không tìm thấy đề thi.',
+            )
           : _buildExamDetail(exam),
     );
   }
 
   Widget _buildError() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _errorMessage!,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton(
-              onPressed: _loadExamDetail,
-              child: const Text('Thu lai'),
-            ),
-          ],
-        ),
-      ),
-    );
+    return ErrorView(message: _errorMessage!, onRetry: _loadExamDetail);
   }
 
   Widget _buildExamDetail(Exam exam) {
@@ -106,29 +91,44 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
         ],
         if (exam.premiumOnly) ...[
           const SizedBox(height: 8),
-          Text(
-            'Premium only',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          const Chip(label: Text('Premium')),
         ],
         const SizedBox(height: 20),
-        FilledButton.icon(
-          onPressed: _isStartingAttempt ? null : () => _startAttempt(exam),
-          icon: _isStartingAttempt
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.play_arrow),
-          label: const Text('Bắt đầu luyện tập'),
-        ),
+        if (exam.premiumOnly)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.workspace_premium),
+                      SizedBox(width: 8),
+                      Text('Đề thi Premium'),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  Text('Hãy đăng ký và tham gia Mock Session để làm đề này.'),
+                ],
+              ),
+            ),
+          )
+        else
+          FilledButton.icon(
+            onPressed: _isStartingAttempt ? null : () => _startAttempt(exam),
+            icon: _isStartingAttempt
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.play_arrow),
+            label: const Text('Bắt đầu luyện tập'),
+          ),
         const SizedBox(height: 20),
         if (exam.sections.isEmpty)
-          const Text('De thi chua co section.')
+          const Text('Đề thi chưa có section.')
         else
           ...exam.sections.map(_buildSection),
       ],
@@ -148,20 +148,7 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 4),
-            Text('Thu tu section: ${section.sectionOrder}'),
-            if (section.mediaUrl.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text('Media: ${section.mediaUrl}'),
-            ],
-            if (section.passageContent.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(section.passageContent),
-            ],
-            const SizedBox(height: 12),
-            if (section.questions.isEmpty)
-              const Text('Section nay chua co cau hoi.')
-            else
-              ...section.questions.map(_buildQuestion),
+            Text('${section.questionCount} câu hỏi'),
           ],
         ),
       ),
@@ -175,11 +162,12 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
 
     try {
       final attempt = await _attemptService.startAttempt(exam.id);
+      final fullExam = await _attemptService.getAttemptExam(attempt.attemptId);
       if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => TestScreen(exam: exam, attempt: attempt),
+          builder: (_) => TestScreen(exam: fullExam, attempt: attempt),
         ),
       );
     } catch (error) {
@@ -194,31 +182,5 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
         });
       }
     }
-  }
-
-  Widget _buildQuestion(Question question) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${question.orderIndex}. ${question.content}',
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 4),
-          Text('Loai cau hoi: ${question.questionType}'),
-          if (question.answers.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            ...question.answers.map(
-              (answer) => Padding(
-                padding: const EdgeInsets.only(left: 12, bottom: 4),
-                child: Text('- ${answer.content}'),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }

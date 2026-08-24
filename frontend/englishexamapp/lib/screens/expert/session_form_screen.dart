@@ -95,7 +95,9 @@ class _SessionFormScreenState extends State<SessionFormScreen> {
     if (!_formKey.currentState!.validate()) return;
     if (_examId == null || _startTime == null || _endTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng chọn Exam, Start và End time.')),
+        const SnackBar(
+          content: Text('Vui lòng chọn đề thi, thời gian bắt đầu và kết thúc.'),
+        ),
       );
       return;
     }
@@ -172,7 +174,7 @@ class _SessionFormScreenState extends State<SessionFormScreen> {
                         .toList(),
                     onChanged: (value) => setState(() => _examId = value),
                     decoration: const InputDecoration(
-                      labelText: 'Exam',
+                      labelText: 'Đề thi',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -180,7 +182,7 @@ class _SessionFormScreenState extends State<SessionFormScreen> {
                   TextFormField(
                     controller: _roomController,
                     decoration: const InputDecoration(
-                      labelText: 'Room code',
+                      labelText: 'Mã phòng',
                       border: OutlineInputBorder(),
                     ),
                     validator: (value) => value == null || value.trim().isEmpty
@@ -192,7 +194,7 @@ class _SessionFormScreenState extends State<SessionFormScreen> {
                     controller: _maxCandidatesController,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'Max candidates',
+                      labelText: 'Số thí sinh tối đa',
                       border: OutlineInputBorder(),
                     ),
                     validator: (value) {
@@ -205,21 +207,21 @@ class _SessionFormScreenState extends State<SessionFormScreen> {
                   ),
                   const SizedBox(height: 12),
                   _DateButton(
-                    label: 'Start time',
+                    label: 'Thời gian bắt đầu',
                     value: _startTime,
                     onPressed: () => _pickDateTime(
                       (value) => setState(() => _startTime = value),
                     ),
                   ),
                   _DateButton(
-                    label: 'End time',
+                    label: 'Thời gian kết thúc',
                     value: _endTime,
                     onPressed: () => _pickDateTime(
                       (value) => setState(() => _endTime = value),
                     ),
                   ),
                   _DateButton(
-                    label: 'Registration deadline',
+                    label: 'Hạn đăng ký',
                     value: _registrationDeadline,
                     onPressed: () => _pickDateTime(
                       (value) => setState(() => _registrationDeadline = value),

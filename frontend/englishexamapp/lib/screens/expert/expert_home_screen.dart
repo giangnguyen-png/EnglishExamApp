@@ -30,6 +30,8 @@ class ExpertHomeScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text('Expert', style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 6),
+            const Text('Quản lý kỳ thi và chấm Speaking cho thí sinh.'),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () => Navigator.push(

@@ -71,6 +71,10 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 		User user = this.userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
 		Exam exam = this.examRepository.findById(examId).orElseThrow(() -> new RuntimeException("Exam not found"));
 
+		if (exam.isPremiumOnly() && sessionId == null) {
+			throw new RuntimeException("Premium exam must be taken through a mock session");
+		}
+
 		TestAttempt attempt = new TestAttempt();
 		attempt.setUser(user);
 		attempt.setExam(exam);
@@ -90,6 +94,10 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 		if (attempt.getEndTime() != null) {
 			throw new RuntimeException("Test attempt has already been submitted");
 		}
+		if (attempt.getSession() != null) {
+			validatePremiumSpeakingComplete(attempt);
+		}
+
 		attempt.setEndTime(LocalDateTime.now());
 		saveSkillResult(attempt, SkillType.LISTENING,
 				this.scoringService.calculateObjectiveBand(attemptId, SkillType.LISTENING), null);
@@ -145,7 +153,14 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 		if (!this.userRepository.existsById(userId)) {
 			throw new RuntimeException("User not found");
 		}
-		return this.testAttemptRepository.findByUserIdOrderByCreatedAtDesc(userId);
+		return this.testAttemptRepository.findByUserIdAndEndTimeIsNotNullOrderByEndTimeDesc(userId);
+	}
+
+	public List<TestAttempt> findBySession(Integer sessionId) {
+		if (!this.mockSessionRepository.existsById(sessionId)) {
+			throw new RuntimeException("Session not found");
+		}
+		return this.testAttemptRepository.findBySessionId(sessionId);
 	}
 
 	public BigDecimal calculateOverallBand(Integer attemptId) {
@@ -210,12 +225,6 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 	}
 
 	private void savePremiumSpeakingSkillResultOnSubmit(TestAttempt attempt) {
-		List<UserResponse> speakingResponses = this.userResponseRepository
-				.findByAttemptIdAndQuestionExamSectionSkillType(attempt.getId(), SkillType.SPEAKING);
-		if (speakingResponses.isEmpty()) {
-			saveSkillResult(attempt, SkillType.SPEAKING, BigDecimal.ZERO.setScale(1), null);
-			return;
-		}
 		SkillResult result = this.skillResultRepository
 				.findByAttemptIdAndSkillType(attempt.getId(), SkillType.SPEAKING)
 				.orElseGet(SkillResult::new);
@@ -227,6 +236,29 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 		result.setBandScore(null);
 		result.setAiAnalysis(null);
 		this.skillResultRepository.save(result);
+	}
+
+	private void validatePremiumSpeakingComplete(TestAttempt attempt) {
+		List<Question> speakingQuestions = this.questionRepository
+				.findByExamSectionExamIdAndExamSectionSkillTypeOrderByExamSectionSectionOrderAscOrderIndexAsc(
+						attempt.getExam().getId(), SkillType.SPEAKING);
+		List<UserResponse> speakingResponses = this.userResponseRepository
+				.findByAttemptIdAndQuestionExamSectionSkillType(attempt.getId(), SkillType.SPEAKING);
+		Map<Integer, UserResponse> responseByQuestionId = speakingResponses.stream()
+				.filter(this::hasValidSpeakingAudio)
+				.collect(Collectors.toMap(response -> response.getQuestion().getId(), Function.identity(),
+						(existing, replacement) -> existing));
+
+		boolean hasAnsweredAllQuestions = speakingQuestions.stream()
+				.allMatch(question -> responseByQuestionId.containsKey(question.getId()));
+		if (!hasAnsweredAllQuestions) {
+			throw new RuntimeException("Please answer all Speaking questions before submitting");
+		}
+	}
+
+	private boolean hasValidSpeakingAudio(UserResponse response) {
+		return (response.getFileUrl() != null && !response.getFileUrl().isBlank())
+				|| (response.getFilePublicId() != null && !response.getFilePublicId().isBlank());
 	}
 
 	private String buildSpeakingAttemptContent(TestAttempt attempt, List<UserResponse> speakingResponses) {

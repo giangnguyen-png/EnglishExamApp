@@ -11,8 +11,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.englishApp.exam.dto.attempt.StartAttemptResponse;
-import com.englishApp.exam.dto.exam.ExamDetailResponse;
 import com.englishApp.exam.dto.exam.ExamListResponse;
+import com.englishApp.exam.dto.exam.ExamSummaryResponse;
 import com.englishApp.exam.model.TestAttempt;
 import com.englishApp.exam.model.User;
 import com.englishApp.exam.service.ExamService;
@@ -41,8 +41,8 @@ public class ExamController {
 	}
 
 	@GetMapping("/{examId}")
-	public ResponseEntity<ExamDetailResponse> findById(@PathVariable Integer examId) {
-		return ResponseEntity.ok(ExamDetailResponse.from(this.examService.findById(examId)));
+	public ResponseEntity<ExamSummaryResponse> findById(@PathVariable Integer examId) {
+		return ResponseEntity.ok(ExamSummaryResponse.from(this.examService.findById(examId)));
 	}
 
 	@PostMapping("/{examId}/attempts")

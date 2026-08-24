@@ -46,6 +46,9 @@ public record ExamDetailResponse(
 			Integer id,
 			QuestionType questionType,
 			String content,
+			String imageUrl,
+			Integer durationSeconds,
+			Integer preparationSeconds,
 			int orderIndex,
 			List<AnswerResponse> answers) {
 		public static QuestionResponse from(Question question) {
@@ -54,6 +57,7 @@ public record ExamDetailResponse(
 					.map(AnswerResponse::from)
 					.toList();
 			return new QuestionResponse(question.getId(), question.getQuestionType(), question.getContent(),
+					question.getImageUrl(), question.getDurationSeconds(), question.getPreparationSeconds(),
 					question.getOrderIndex(), answers);
 		}
 	}

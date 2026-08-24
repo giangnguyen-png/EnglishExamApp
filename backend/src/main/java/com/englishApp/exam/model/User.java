@@ -68,9 +68,6 @@ public class User {
 	@OneToMany(mappedBy = "user")
 	@ToString.Exclude
 	private List<TestAttempt> testAttempts;
-	@OneToMany(mappedBy = "gradedBy")
-	@ToString.Exclude
-	private List<UserResponse> responses;
 	@OneToMany(mappedBy = "user")
 	@ToString.Exclude
 	private List<Payment> payments;

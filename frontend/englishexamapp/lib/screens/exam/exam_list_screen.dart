@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/exam.dart';
 import '../../services/api_service.dart';
 import '../../services/exam_service.dart';
+import '../../widgets/state_views.dart';
 import 'exam_detail_screen.dart';
 
 class ExamListScreen extends StatefulWidget {
@@ -61,41 +62,25 @@ class _ExamListScreenState extends State<ExamListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Practice Exams')),
+      appBar: AppBar(title: const Text('Luyện thi')),
       body: _buildBody(),
     );
   }
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const LoadingView(message: 'Đang tải danh sách đề thi...');
     }
 
     if (_errorMessage != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: _loadExams,
-                child: const Text('Thu lai'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return ErrorView(message: _errorMessage!, onRetry: _loadExams);
     }
 
     if (_exams.isEmpty) {
-      return const Center(child: Text('Chua co de thi nao.'));
+      return const EmptyState(
+        icon: Icons.menu_book,
+        message: 'Chưa có đề thi nào.',
+      );
     }
 
     return RefreshIndicator(
@@ -107,27 +92,45 @@ class _ExamListScreenState extends State<ExamListScreen> {
         itemBuilder: (context, index) {
           final exam = _exams[index];
           return Card(
-            child: ListTile(
-              title: Text(exam.title),
-              subtitle: Column(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (exam.description.isNotEmpty) Text(exam.description),
-                  if (exam.premiumOnly)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        'Premium only',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          exam.title,
+                          style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),
-                    ),
+                      if (exam.premiumOnly) const Chip(label: Text('Premium')),
+                    ],
+                  ),
+                  if (exam.description.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(exam.description),
+                  ],
+                  const SizedBox(height: 12),
+                  const Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      Chip(label: Text('Listening')),
+                      Chip(label: Text('Reading')),
+                      Chip(label: Text('Writing')),
+                      Chip(label: Text('Speaking')),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: () => _openExamDetail(exam),
+                    icon: const Icon(Icons.chevron_right),
+                    label: const Text('Xem đề'),
+                  ),
                 ],
               ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _openExamDetail(exam),
             ),
           );
         },

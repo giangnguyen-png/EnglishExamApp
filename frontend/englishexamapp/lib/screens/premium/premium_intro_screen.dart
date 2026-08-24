@@ -74,9 +74,21 @@ class _PremiumIntroScreenState extends State<PremiumIntroScreen> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          Icon(
+            Icons.workspace_premium,
+            size: 64,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 16),
           Text(
             'IELTS Premium',
             style: Theme.of(context).textTheme.headlineSmall,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Trải nghiệm thi thử gần giống kỳ thi thật.',
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
           const Card(
@@ -96,9 +108,16 @@ class _PremiumIntroScreenState extends State<PremiumIntroScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          Text('49.000đ', style: Theme.of(context).textTheme.headlineMedium),
+          Text(
+            '49.000đ',
+            style: Theme.of(context).textTheme.headlineMedium,
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 4),
-          const Text('Thanh toán demo phục vụ đồ án'),
+          const Text(
+            'Thanh toán demo phục vụ đồ án',
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: _isLoading ? null : _confirmPayment,
@@ -108,7 +127,7 @@ class _PremiumIntroScreenState extends State<PremiumIntroScreen> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Thanh toán để kích hoạt'),
+                : const Text('Kích hoạt Premium'),
           ),
         ],
       ),

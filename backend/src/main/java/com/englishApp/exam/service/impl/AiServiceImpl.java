@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.englishApp.exam.client.GeminiClient;
@@ -20,6 +21,9 @@ public class AiServiceImpl implements AiService {
 	private static final BigDecimal MIN_SCORE = BigDecimal.ZERO;
 	private static final BigDecimal MAX_SCORE = BigDecimal.valueOf(9.0);
 
+	@Value("${ai.mock-enabled:false}")
+	private boolean mockEnabled;
+
 	private final GeminiClient geminiClient;
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -32,11 +36,28 @@ public class AiServiceImpl implements AiService {
 		if (taskNumber != 1 && taskNumber != 2) {
 			throw new IllegalArgumentException("Writing task number must be 1 or 2");
 		}
+		if (mockEnabled) {
+			BigDecimal score = taskNumber == 1 ? BigDecimal.valueOf(6.0) : BigDecimal.valueOf(6.5);
+
+			return new AiEvaluationResult(score, new AiFeedback(
+					List.of("Bài viết có bố cục tương đối rõ ràng.", "Nội dung có liên quan đến yêu cầu đề bài."),
+					List.of("Từ vựng và cấu trúc câu vẫn còn hạn chế.", "Một số ý chưa được phát triển đầy đủ."),
+					List.of("Phát triển ý chi tiết hơn.", "Sử dụng đa dạng từ vựng và cấu trúc câu.")));
+		}
 		return evaluate(buildWritingPrompt(question, answer, taskNumber));
 	}
 
 	public AiEvaluationResult evaluateSpeakingAttempt(String speakingTestContent) {
 		validateInput(speakingTestContent, "Speaking test content is required");
+		if (mockEnabled) {
+			return new AiEvaluationResult(BigDecimal.valueOf(6.5),
+					new AiFeedback(
+							List.of("Câu trả lời nhìn chung đúng trọng tâm.",
+									"Có khả năng diễn đạt ý tương đối rõ ràng."),
+							List.of("Vốn từ và cấu trúc câu chưa đa dạng.", "Độ trôi chảy cần được cải thiện."),
+							List.of("Mở rộng câu trả lời với nhiều chi tiết hơn.",
+									"Luyện nói thường xuyên để tăng độ trôi chảy.")));
+		}
 		return evaluate(buildSpeakingAttemptPrompt(speakingTestContent));
 	}
 
@@ -47,10 +68,16 @@ public class AiServiceImpl implements AiService {
 		validateBandScore(writingBand, "Writing band score is required");
 		validateBandScore(speakingBand, "Speaking band score is required");
 
-		String json = this.geminiClient.generateJson(
-				buildOverallPrompt(listeningBand, readingBand, writingBand, speakingBand, writingAiAnalysis,
-						speakingAiAnalysis),
-				feedbackSchema());
+		if (mockEnabled) {
+			return new AiFeedback(
+					List.of("Người học có nền tảng tương đối tốt ở một số kỹ năng.",
+							"Kết quả bốn kỹ năng tương đối ổn định."),
+					List.of("Writing và Speaking vẫn còn khả năng cải thiện."),
+					List.of("Tiếp tục luyện tập đều cả bốn kỹ năng.", "Tập trung nhiều hơn vào Writing và Speaking."));
+		}
+
+		String json = this.geminiClient.generateJson(buildOverallPrompt(listeningBand, readingBand, writingBand,
+				speakingBand, writingAiAnalysis, speakingAiAnalysis), feedbackSchema());
 		AiFeedback feedback = parseFeedback(json);
 		validateFeedback(feedback);
 		return feedback;
@@ -72,6 +99,11 @@ public class AiServiceImpl implements AiService {
 
 				Return only JSON matching the schema. Give one overall Task %d band score from 0.0 to 9.0 in 0.5 increments.
 				Feedback must be short, specific, useful, and based on the submitted answer.
+				All feedback explanations must be written in Vietnamese.
+				The candidate's IELTS answer remains in English.
+				Keep official IELTS criterion names in English when appropriate, for example %s,
+				Coherence and Cohesion, Lexical Resource, and Grammatical Range and Accuracy.
+				Do not translate JSON property names.
 				Do not return markdown or free text.
 
 				Writing task:
@@ -79,7 +111,8 @@ public class AiServiceImpl implements AiService {
 
 				User answer:
 				%s
-				""".formatted(taskNumber, taskCriterion, taskNumber, safeText(question), answer);
+				"""
+				.formatted(taskNumber, taskCriterion, taskNumber, taskCriterion, safeText(question), answer);
 	}
 
 	private String buildSpeakingAttemptPrompt(String speakingTestContent) {
@@ -98,11 +131,17 @@ public class AiServiceImpl implements AiService {
 
 				Return only JSON matching the schema. Give one overall Speaking band score from 0.0 to 9.0 in 0.5 increments.
 				Feedback must be short, specific, useful, and must mention that the score is an estimate from transcripts.
+				All feedback explanations must be written in Vietnamese.
+				The candidate's IELTS transcript remains in English.
+				Keep official IELTS criterion names in English when appropriate, for example Fluency and Coherence,
+				Lexical Resource, Grammatical Range and Accuracy, and Pronunciation.
+				Do not translate JSON property names.
 				Do not return markdown or free text.
 
 				Speaking test content:
 				%s
-				""".formatted(speakingTestContent);
+				"""
+				.formatted(speakingTestContent);
 	}
 
 	private String buildOverallPrompt(BigDecimal listeningBand, BigDecimal readingBand, BigDecimal writingBand,
@@ -113,6 +152,10 @@ public class AiServiceImpl implements AiService {
 
 				Return only JSON matching the schema. Do not return markdown or free text.
 				Feedback must be short, specific, useful, and suitable for an IELTS learner.
+				All feedback explanations must be written in Vietnamese.
+				The candidate's IELTS answer/transcript remains in English.
+				Keep official IELTS criterion names in English when appropriate.
+				Do not translate JSON property names.
 
 				Band scores:
 				Listening: %s
@@ -125,42 +168,26 @@ public class AiServiceImpl implements AiService {
 
 				Speaking AI analysis:
 				%s
-				""".formatted(listeningBand, readingBand, writingBand, speakingBand, safeText(writingAiAnalysis),
-				safeText(speakingAiAnalysis));
+				"""
+				.formatted(listeningBand, readingBand, writingBand, speakingBand, safeText(writingAiAnalysis),
+						safeText(speakingAiAnalysis));
 	}
 
 	private Schema evaluationSchema() {
-		return Schema.builder()
-				.type(Type.Known.OBJECT)
-				.properties(Map.of(
-						"score", Schema.builder()
-								.type(Type.Known.NUMBER)
-								.minimum(0.0)
-								.maximum(9.0)
-								.description("One IELTS band score from 0.0 to 9.0, normally in 0.5 increments.")
-								.build(),
+		return Schema.builder().type(Type.Known.OBJECT)
+				.properties(Map.of("score", Schema.builder().type(Type.Known.NUMBER).minimum(0.0).maximum(9.0)
+						.description("One IELTS band score from 0.0 to 9.0, normally in 0.5 increments.").build(),
 						"feedback", feedbackSchema()))
-				.required("score", "feedback")
-				.propertyOrdering("score", "feedback")
-				.build();
+				.required("score", "feedback").propertyOrdering("score", "feedback").build();
 	}
 
 	private Schema feedbackSchema() {
-		Schema stringArray = Schema.builder()
-				.type(Type.Known.ARRAY)
-				.items(Schema.builder().type(Type.Known.STRING))
-				.minItems(1L)
-				.maxItems(3L)
-				.build();
-		return Schema.builder()
-				.type(Type.Known.OBJECT)
-				.properties(Map.of(
-						"strengths", stringArray,
-						"weaknesses", stringArray,
-						"improvements", stringArray))
+		Schema stringArray = Schema.builder().type(Type.Known.ARRAY).items(Schema.builder().type(Type.Known.STRING))
+				.minItems(1L).maxItems(3L).build();
+		return Schema.builder().type(Type.Known.OBJECT)
+				.properties(Map.of("strengths", stringArray, "weaknesses", stringArray, "improvements", stringArray))
 				.required("strengths", "weaknesses", "improvements")
-				.propertyOrdering("strengths", "weaknesses", "improvements")
-				.build();
+				.propertyOrdering("strengths", "weaknesses", "improvements").build();
 	}
 
 	private AiEvaluationResult parseEvaluation(String json) {
@@ -212,7 +239,8 @@ public class AiServiceImpl implements AiService {
 	}
 
 	private boolean isBlank(List<String> values) {
-		return values == null || values.isEmpty() || values.stream().anyMatch(value -> value == null || value.isBlank());
+		return values == null || values.isEmpty()
+				|| values.stream().anyMatch(value -> value == null || value.isBlank());
 	}
 
 	private String safeText(String value) {

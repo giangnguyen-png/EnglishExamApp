@@ -100,16 +100,18 @@ class _SpeakingGradingScreenState extends State<SpeakingGradingScreen> {
             attempt.username,
             style: Theme.of(context).textTheme.titleMedium,
           ),
+          const SizedBox(height: 6),
+          Text(
+            'Speaking Test',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
           const SizedBox(height: 16),
           ...attempt.responses.map(_buildResponse),
           const SizedBox(height: 16),
           TextField(
             controller: _scoreController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Speaking Band',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'Speaking Band'),
           ),
           const SizedBox(height: 12),
           FilledButton(
@@ -136,6 +138,8 @@ class _SpeakingGradingScreenState extends State<SpeakingGradingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text('Question', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 6),
             Text(
               response.questionContent,
               style: Theme.of(context).textTheme.titleMedium,
@@ -149,7 +153,7 @@ class _SpeakingGradingScreenState extends State<SpeakingGradingScreen> {
               label: Text(isPlaying ? 'Tạm dừng' : 'Phát audio'),
             ),
             const SizedBox(height: 8),
-            const Text('Transcript:'),
+            const Text('Transcript'),
             Text(
               response.transcript.isEmpty
                   ? 'Chưa có transcript'

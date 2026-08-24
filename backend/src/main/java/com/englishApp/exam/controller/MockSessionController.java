@@ -23,6 +23,7 @@ import com.englishApp.exam.model.SessionRegistration;
 import com.englishApp.exam.model.TestAttempt;
 import com.englishApp.exam.model.User;
 import com.englishApp.exam.service.MockSessionService;
+import com.englishApp.exam.service.PaymentService;
 import com.englishApp.exam.service.SessionRegistrationService;
 import com.englishApp.exam.service.TestAttemptService;
 import com.englishApp.exam.service.UserService;
@@ -33,19 +34,23 @@ public class MockSessionController {
 	private final MockSessionService mockSessionService;
 	private final SessionRegistrationService sessionRegistrationService;
 	private final TestAttemptService testAttemptService;
+	private final PaymentService paymentService;
 	private final UserService userService;
 
 	public MockSessionController(MockSessionService mockSessionService,
 			SessionRegistrationService sessionRegistrationService, TestAttemptService testAttemptService,
-			UserService userService) {
+			PaymentService paymentService, UserService userService) {
 		this.mockSessionService = mockSessionService;
 		this.sessionRegistrationService = sessionRegistrationService;
 		this.testAttemptService = testAttemptService;
+		this.paymentService = paymentService;
 		this.userService = userService;
 	}
 
 	@GetMapping("/available")
-	public ResponseEntity<List<MockSessionSummaryResponse>> findAvailableSessions() {
+	public ResponseEntity<List<MockSessionSummaryResponse>> findAvailableSessions(Authentication authentication) {
+		User currentUser = getCurrentUser(authentication);
+		this.paymentService.requirePremium(currentUser.getId());
 		List<MockSessionSummaryResponse> sessions = this.mockSessionService.findAvailableSessions().stream()
 				.sorted(Comparator.comparing(MockSession::getStartTime))
 				.map(MockSessionSummaryResponse::from)
@@ -57,6 +62,7 @@ public class MockSessionController {
 	public ResponseEntity<SessionRegistrationResponse> registerSession(@PathVariable Integer sessionId,
 			Authentication authentication) {
 		User currentUser = getCurrentUser(authentication);
+		this.paymentService.requirePremium(currentUser.getId());
 		SessionRegistration registration = this.sessionRegistrationService.registerSession(sessionId, currentUser.getId());
 		return ResponseEntity.ok(SessionRegistrationResponse.from(registration));
 	}
@@ -64,6 +70,7 @@ public class MockSessionController {
 	@GetMapping("/registrations/me")
 	public ResponseEntity<List<MySessionRegistrationResponse>> findMyRegistrations(Authentication authentication) {
 		User currentUser = getCurrentUser(authentication);
+		this.paymentService.requirePremium(currentUser.getId());
 		List<MySessionRegistrationResponse> registrations = this.sessionRegistrationService
 				.findByUser(currentUser.getId()).stream()
 				.sorted(Comparator.comparing(registration -> registration.getSession().getStartTime()))
@@ -75,6 +82,7 @@ public class MockSessionController {
 	@DeleteMapping("/registrations/{registrationId}")
 	public ResponseEntity<Void> cancelRegistration(@PathVariable Integer registrationId, Authentication authentication) {
 		User currentUser = getCurrentUser(authentication);
+		this.paymentService.requirePremium(currentUser.getId());
 		SessionRegistration registration = this.sessionRegistrationService.findById(registrationId);
 		validateRegistrationOwner(registration, currentUser);
 		this.sessionRegistrationService.cancelRegistration(registrationId);
@@ -85,6 +93,7 @@ public class MockSessionController {
 	public ResponseEntity<PremiumStartAttemptResponse> startPremiumAttempt(@PathVariable Integer sessionId,
 			Authentication authentication) {
 		User currentUser = getCurrentUser(authentication);
+		this.paymentService.requirePremium(currentUser.getId());
 		MockSession session = this.mockSessionService.findById(sessionId);
 		TestAttempt attempt = this.testAttemptService.startAttempt(currentUser.getId(), session.getExam().getId(),
 				sessionId);

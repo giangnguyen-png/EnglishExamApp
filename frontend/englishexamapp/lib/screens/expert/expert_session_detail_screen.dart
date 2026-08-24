@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/mock_session.dart';
 import '../../services/api_service.dart';
 import '../../services/expert_service.dart';
+import '../../widgets/state_views.dart';
 import 'session_candidates_screen.dart';
 import 'session_form_screen.dart';
 import 'speaking_attempt_list_screen.dart';
@@ -119,7 +120,7 @@ class _ExpertSessionDetailScreenState extends State<ExpertSessionDetailScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Chi tiết ca thi')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView(message: 'Đang tải chi tiết ca thi...')
           : _errorMessage != null
           ? Center(child: Text(_errorMessage!))
           : session == null
@@ -139,12 +140,12 @@ class _ExpertSessionDetailScreenState extends State<ExpertSessionDetailScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(session.examTitle),
-                        Text('Bắt đầu: ${_formatDateTime(session.startTime)}'),
-                        Text('Kết thúc: ${_formatDateTime(session.endTime)}'),
+                        Text('Bắt đầu: ${formatDateTime(session.startTime)}'),
+                        Text('Kết thúc: ${formatDateTime(session.endTime)}'),
                         Text(
-                          'Hạn đăng ký: ${_formatDateTime(session.registrationDeadline)}',
+                          'Hạn đăng ký: ${formatDateTime(session.registrationDeadline)}',
                         ),
-                        Text('Trạng thái: ${session.status}'),
+                        Text('Trạng thái: ${_statusLabel(session.status)}'),
                         Text(
                           'Số đăng ký: ${session.registrationCount ?? 0}/${session.maxCandidates}',
                         ),
@@ -168,7 +169,7 @@ class _ExpertSessionDetailScreenState extends State<ExpertSessionDetailScreen> {
                         : () => _runAction(
                             () => _expertService.startSession(session.id),
                           ),
-                    child: const Text('Start'),
+                    child: const Text('Bắt đầu ca thi'),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton(
@@ -208,7 +209,7 @@ class _ExpertSessionDetailScreenState extends State<ExpertSessionDetailScreen> {
                         : () => _runAction(
                             () => _expertService.finishSession(session.id),
                           ),
-                    child: const Text('Finish'),
+                    child: const Text('Kết thúc ca thi'),
                   ),
                 ],
               ],
@@ -217,11 +218,15 @@ class _ExpertSessionDetailScreenState extends State<ExpertSessionDetailScreen> {
   }
 }
 
-String _formatDateTime(String raw) {
-  final date = DateTime.tryParse(raw);
-  if (date == null) return raw.isEmpty ? 'Chưa có' : raw;
-  return '${date.day.toString().padLeft(2, '0')}/'
-      '${date.month.toString().padLeft(2, '0')}/${date.year} '
-      '${date.hour.toString().padLeft(2, '0')}:'
-      '${date.minute.toString().padLeft(2, '0')}';
+String _statusLabel(String status) {
+  switch (status) {
+    case 'PENDING':
+      return 'Đang chờ';
+    case 'ONGOING':
+      return 'Đang thi';
+    case 'COMPLETED':
+      return 'Đã kết thúc';
+    default:
+      return status;
+  }
 }

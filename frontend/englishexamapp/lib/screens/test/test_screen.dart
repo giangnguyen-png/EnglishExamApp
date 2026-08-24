@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../config/ielts_time.dart';
 import '../../models/attempt.dart';
 import '../../models/exam.dart';
 import '../../services/api_service.dart';
@@ -37,6 +38,9 @@ class _TestScreenState extends State<TestScreen> {
   final Map<int, int> _listeningPlayCounts = {};
   final Map<int, bool> _listeningCompleted = {};
   StreamSubscription<PlayerState>? _playerStateSubscription;
+  Timer? _skillTimer;
+  Duration _remainingTime = Duration.zero;
+  String? _activeSkillType;
 
   int? _activeAudioSectionId;
   bool _isAudioLoading = false;
@@ -75,10 +79,14 @@ class _TestScreenState extends State<TestScreen> {
         });
       }
     });
+    if (_practiceSections.isNotEmpty) {
+      _startSkillTimer(_practiceSections.first.skillType);
+    }
   }
 
   @override
   void dispose() {
+    _skillTimer?.cancel();
     _playerStateSubscription?.cancel();
     _audioPlayer.dispose();
     super.dispose();
@@ -155,6 +163,7 @@ class _TestScreenState extends State<TestScreen> {
         _sectionIndex--;
         _questionIndex = _practiceSections[_sectionIndex].questions.length - 1;
       });
+      _syncSkillTimer();
     }
   }
 
@@ -175,6 +184,7 @@ class _TestScreenState extends State<TestScreen> {
         _sectionIndex++;
         _questionIndex = 0;
       });
+      _syncSkillTimer();
       return;
     }
 
@@ -182,6 +192,7 @@ class _TestScreenState extends State<TestScreen> {
   }
 
   Future<void> _openWriting() async {
+    _skillTimer?.cancel();
     await _stopListeningAudio();
     if (!mounted) return;
     Navigator.push(
@@ -233,10 +244,23 @@ class _TestScreenState extends State<TestScreen> {
     final isSavingCurrentQuestion = _savingQuestionIds.contains(question.id);
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.exam.title)),
+      appBar: AppBar(
+        title: Text(widget.exam.title),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(child: Text(_formatDuration(_remainingTime))),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Text(
+            widget.exam.title,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 6),
           Text(
             _skillLabel(section.skillType),
             style: Theme.of(context).textTheme.headlineSmall,
@@ -245,6 +269,8 @@ class _TestScreenState extends State<TestScreen> {
           LinearProgressIndicator(value: progress),
           const SizedBox(height: 8),
           Text('Câu $currentNumber/$totalQuestions'),
+          const SizedBox(height: 4),
+          Text('Thời gian còn lại: ${_formatDuration(_remainingTime)}'),
           if (section.skillType == 'LISTENING' &&
               section.mediaUrl.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -255,7 +281,19 @@ class _TestScreenState extends State<TestScreen> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(section.passageContent),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      section.skillType == 'READING'
+                          ? 'Reading Passage'
+                          : 'Nội dung bài thi',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(section.passageContent),
+                  ],
+                ),
               ),
             ),
           ],
@@ -267,9 +305,15 @@ class _TestScreenState extends State<TestScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
+                    'Question ${question.orderIndex}',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
                     question.content,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  _buildQuestionImage(question),
                   const SizedBox(height: 12),
                   ..._buildAnswerOptions(question),
                   if (_savingQuestionIds.contains(question.id)) ...[
@@ -326,7 +370,7 @@ class _TestScreenState extends State<TestScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.volume_up),
+                const Icon(Icons.headphones),
                 const SizedBox(width: 8),
                 Text(
                   'Bài nghe',
@@ -553,6 +597,92 @@ class _TestScreenState extends State<TestScreen> {
         ),
       ),
     ];
+  }
+
+  Widget _buildQuestionImage(Question question) {
+    final imageUrl = question.imageUrl;
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          imageUrl,
+          fit: BoxFit.contain,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) {
+              return child;
+            }
+            return const SizedBox(
+              height: 180,
+              child: Center(child: CircularProgressIndicator()),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+  }
+
+  void _startSkillTimer(String skillType) {
+    _skillTimer?.cancel();
+    _activeSkillType = skillType;
+    _remainingTime = IeltsTime.forSkill(skillType);
+    if (_remainingTime == Duration.zero) {
+      return;
+    }
+    _skillTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_remainingTime.inSeconds <= 1) {
+        setState(() {
+          _remainingTime = Duration.zero;
+        });
+        _handleSkillTimeExpired();
+        return;
+      }
+      setState(() {
+        _remainingTime -= const Duration(seconds: 1);
+      });
+    });
+  }
+
+  void _syncSkillTimer() {
+    final skillType = _practiceSections[_sectionIndex].skillType;
+    if (skillType != _activeSkillType) {
+      _startSkillTimer(skillType);
+    }
+  }
+
+  void _handleSkillTimeExpired() {
+    _skillTimer?.cancel();
+    final currentSkill = _activeSkillType;
+    if (currentSkill == 'LISTENING') {
+      final nextReadingIndex = _practiceSections.indexWhere(
+        (section) => section.skillType == 'READING',
+      );
+      if (nextReadingIndex != -1) {
+        _stopListeningAudio();
+        setState(() {
+          _sectionIndex = nextReadingIndex;
+          _questionIndex = 0;
+        });
+        _startSkillTimer('READING');
+        return;
+      }
+    }
+    _openWriting();
+  }
+
+  String _formatDuration(Duration duration) {
+    final totalSeconds = duration.inSeconds.clamp(0, 24 * 60 * 60);
+    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 
   String _skillLabel(String skillType) {

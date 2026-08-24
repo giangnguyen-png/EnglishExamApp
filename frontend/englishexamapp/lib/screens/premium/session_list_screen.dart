@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/mock_session.dart';
 import '../../services/api_service.dart';
 import '../../services/mock_session_service.dart';
+import '../../widgets/state_views.dart';
 
 class SessionListScreen extends StatefulWidget {
   const SessionListScreen({super.key});
@@ -92,30 +93,18 @@ class _SessionListScreenState extends State<SessionListScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const LoadingView(message: 'Đang tải ca thi Premium...');
     }
 
     if (_errorMessage != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_errorMessage!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: _loadSessions,
-                child: const Text('Thử lại'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return ErrorView(message: _errorMessage!, onRetry: _loadSessions);
     }
 
     if (_sessions.isEmpty) {
-      return const Center(child: Text('Chưa có ca thi phù hợp.'));
+      return const EmptyState(
+        icon: Icons.event_busy,
+        message: 'Chưa có ca thi Premium khả dụng.',
+      );
     }
 
     return RefreshIndicator(
@@ -137,11 +126,13 @@ class _SessionListScreenState extends State<SessionListScreen> {
                     session.examTitle,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  const SizedBox(height: 8),
+                  Chip(label: Text(_statusLabel(session.status))),
                   const SizedBox(height: 6),
                   Text('Phòng: ${session.roomCode}'),
-                  Text('Bắt đầu: ${_formatDateTime(session.startTime)}'),
+                  Text('Bắt đầu: ${formatDateTime(session.startTime)}'),
                   Text(
-                    'Hạn đăng ký: ${_formatDateTime(session.registrationDeadline)}',
+                    'Hạn đăng ký: ${formatDateTime(session.registrationDeadline)}',
                   ),
                   const SizedBox(height: 12),
                   FilledButton(
@@ -164,11 +155,15 @@ class _SessionListScreenState extends State<SessionListScreen> {
   }
 }
 
-String _formatDateTime(String raw) {
-  final date = DateTime.tryParse(raw);
-  if (date == null) return raw.isEmpty ? 'Chưa có' : raw;
-  return '${date.day.toString().padLeft(2, '0')}/'
-      '${date.month.toString().padLeft(2, '0')}/${date.year} '
-      '${date.hour.toString().padLeft(2, '0')}:'
-      '${date.minute.toString().padLeft(2, '0')}';
+String _statusLabel(String status) {
+  switch (status) {
+    case 'PENDING':
+      return 'Sắp diễn ra';
+    case 'ONGOING':
+      return 'Đang thi';
+    case 'COMPLETED':
+      return 'Đã kết thúc';
+    default:
+      return status;
+  }
 }

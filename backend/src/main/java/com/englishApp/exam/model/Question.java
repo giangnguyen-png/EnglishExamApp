@@ -45,6 +45,14 @@ public class Question {
 	private double points;
 	@Column(name = "order_index")
 	private int orderIndex;
+	@Column(name = "image_url", length = 500)
+	private String imageUrl;
+	@Column(name = "image_public_id")
+	private String imagePublicId;
+	@Column(name = "duration_seconds")
+	private Integer durationSeconds;
+	@Column(name = "preparation_seconds")
+	private Integer preparationSeconds;
 
 	@ManyToOne
 	@JoinColumn(name = "exam_section_id", nullable = false)

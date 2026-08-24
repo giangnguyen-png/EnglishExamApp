@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/mock_session.dart';
 import '../../services/api_service.dart';
 import '../../services/expert_service.dart';
+import '../../widgets/state_views.dart';
 
 class SessionCandidatesScreen extends StatefulWidget {
   final int sessionId;
@@ -55,11 +56,11 @@ class _SessionCandidatesScreenState extends State<SessionCandidatesScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Danh sách thí sinh')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingView(message: 'Đang tải danh sách thí sinh...')
           : _errorMessage != null
           ? Center(child: Text(_errorMessage!))
           : _registrations.isEmpty
-          ? const Center(child: Text('Chưa có thí sinh.'))
+          ? const EmptyState(icon: Icons.groups, message: 'Chưa có thí sinh.')
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: _registrations.length,
@@ -68,8 +69,17 @@ class _SessionCandidatesScreenState extends State<SessionCandidatesScreen> {
                 final registration = _registrations[index];
                 return Card(
                   child: ListTile(
-                    title: Text('SBD ${registration.candidateNumber}'),
-                    subtitle: Text(registration.username),
+                    leading: CircleAvatar(
+                      child: Text(
+                        registration.candidateNumber.toString().padLeft(2, '0'),
+                      ),
+                    ),
+                    title: Text(registration.username),
+                    subtitle: Text(
+                      registration.overallBandScore == null
+                          ? 'Overall Band: Chờ kết quả'
+                          : 'Overall Band: ${registration.overallBandScore!.toStringAsFixed(1)}',
+                    ),
                   ),
                 );
               },

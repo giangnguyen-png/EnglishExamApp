@@ -39,8 +39,6 @@ public class UserResponse {
 	private String speechToTextTrans;
 	@Column(name = "ai_score", precision = 3, scale = 1)
 	private BigDecimal aiScore;
-	@Column(name = "expert_score", precision = 3, scale = 1)
-	private BigDecimal expertScore;
 
 	@ManyToOne
 	@JoinColumn(name = "attempt_id", nullable = false)
@@ -50,10 +48,6 @@ public class UserResponse {
 	@JoinColumn(name = "question_id", nullable = false)
 	@ToString.Exclude
 	private Question question;
-	@ManyToOne
-	@JoinColumn(name = "graded_by")
-	@ToString.Exclude
-	private User gradedBy;
 	@OneToMany(mappedBy = "response", cascade = CascadeType.ALL, orphanRemoval = true)
 	@ToString.Exclude
 	private List<UserResponseChoice> answers;

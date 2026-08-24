@@ -39,24 +39,24 @@ class ApiService {
 
       switch (error.response?.statusCode) {
         case 400:
-          return 'Du lieu gui len khong hop le.';
+          return 'Dữ liệu gửi lên không hợp lệ.';
         case 401:
-          return 'Phien dang nhap da het han. Vui long dang nhap lai.';
+          return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
         case 403:
-          return 'Ban khong co quyen thuc hien thao tac nay.';
+          return 'Bạn không có quyền thực hiện thao tác này.';
         case 500:
-          return 'May chu dang gap loi. Vui long thu lai sau.';
+          return 'Máy chủ đang gặp lỗi. Vui lòng thử lại sau.';
       }
 
       if (error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.receiveTimeout ||
           error.type == DioExceptionType.sendTimeout ||
           error.type == DioExceptionType.connectionError) {
-        return 'Khong ket noi duoc backend. Kiem tra Spring Boot da chay chua.';
+        return 'Không kết nối được backend. Kiểm tra Spring Boot đã chạy chưa.';
       }
     }
 
-    return 'Da co loi xay ra. Vui long thu lai.';
+    return 'Đã có lỗi xảy ra. Vui lòng thử lại.';
   }
 
   static String? _extractBackendMessage(dynamic data) {

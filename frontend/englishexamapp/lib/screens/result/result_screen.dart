@@ -10,14 +10,24 @@ class ResultScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const skillOrder = ['LISTENING', 'READING', 'WRITING', 'SPEAKING'];
+    final speaking = result.skillByType('SPEAKING');
+    final waitingForExpert = speaking != null && speaking.bandScore == null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kết quả')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Center(
+            child: Text(
+              'IELTS Practice Result',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ),
+          const SizedBox(height: 12),
           Text(
             result.examTitle,
+            textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 16),
@@ -29,46 +39,77 @@ class ResultScreen extends StatelessWidget {
                   const Text('Overall Band'),
                   const SizedBox(height: 8),
                   Text(
-                    _formatBand(result.overallBandScore),
+                    result.overallBandScore == null
+                        ? 'Chưa có kết quả'
+                        : _formatBand(result.overallBandScore),
                     style: Theme.of(context).textTheme.displaySmall,
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          ...skillOrder.map((skillType) {
-            final skill = result.skillByType(skillType);
-            return _SkillResultCard(
-              title: _skillLabel(skillType),
-              skillType: skillType,
-              bandScore: skill?.bandScore,
-              aiAnalysis: skill?.aiAnalysis ?? '',
-            );
-          }),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Đánh giá tổng quan',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    result.aiOverallFeedback.isEmpty
-                        ? 'Chưa có đánh giá tổng quan.'
-                        : result.aiOverallFeedback,
-                  ),
-                ],
+          if (waitingForExpert) ...[
+            const SizedBox(height: 12),
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Speaking đang chờ giám khảo chấm.\nKết quả tổng sẽ được cập nhật sau.',
+                ),
               ),
             ),
+          ],
+          const SizedBox(height: 16),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.28,
+            children: skillOrder.map((skillType) {
+              final skill = result.skillByType(skillType);
+              return _SkillResultCard(
+                title: _skillLabel(skillType),
+                skillType: skillType,
+                bandScore: skill?.bandScore,
+              );
+            }).toList(),
+          ),
+          _buildSkillAnalysis(context, result),
+          const SizedBox(height: 12),
+          _FeedbackCard(
+            title: 'Đánh giá tổng quan',
+            feedback: result.overallFeedback,
+            emptyMessage: 'Chưa có đánh giá tổng quan.',
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSkillAnalysis(BuildContext context, AttemptResult result) {
+    final writing = result.skillByType('WRITING');
+    final speaking = result.skillByType('SPEAKING');
+
+    return Column(
+      children: [
+        if (writing != null && writing.writingTasks.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: _WritingAnalysisCard(tasks: writing.writingTasks),
+          ),
+        if (speaking != null && !speaking.feedback.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: _FeedbackCard(
+              title: 'Speaking - Band ${_formatBand(speaking.bandScore)}',
+              feedback: speaking.feedback,
+              emptyMessage: 'Chưa có phân tích Speaking.',
+            ),
+          ),
+      ],
     );
   }
 }
@@ -77,44 +118,171 @@ class _SkillResultCard extends StatelessWidget {
   final String title;
   final String skillType;
   final double? bandScore;
-  final String aiAnalysis;
 
   const _SkillResultCard({
     required this.title,
     required this.skillType,
     required this.bandScore,
-    required this.aiAnalysis,
   });
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _formatSkillBand(skillType, bandScore),
+                style: Theme.of(context).textTheme.headlineSmall,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WritingAnalysisCard extends StatelessWidget {
+  final List<WritingTaskAnalysis> tasks;
+
+  const _WritingAnalysisCard({required this.tasks});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                Text(
-                  _formatSkillBand(skillType, bandScore),
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ],
-            ),
-            if (aiAnalysis.isNotEmpty) ...[
+            Text('Writing', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            for (var index = 0; index < tasks.length; index++) ...[
+              if (index > 0) const Divider(height: 28),
+              Text(
+                'Task ${index + 1} - Band ${_formatBand(tasks[index].score)}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 8),
-              Text(aiAnalysis),
+              _FeedbackSection(feedback: tasks[index].feedback),
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _FeedbackCard extends StatelessWidget {
+  final String title;
+  final AiFeedback feedback;
+  final String emptyMessage;
+
+  const _FeedbackCard({
+    required this.title,
+    required this.feedback,
+    required this.emptyMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            feedback.isEmpty
+                ? Text(emptyMessage)
+                : _FeedbackSection(feedback: feedback),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedbackSection extends StatelessWidget {
+  final AiFeedback feedback;
+
+  const _FeedbackSection({required this.feedback});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FeedbackList(
+          icon: Icons.check_circle_outline,
+          title: 'Điểm mạnh',
+          items: feedback.strengths,
+        ),
+        _FeedbackList(
+          icon: Icons.warning_amber,
+          title: 'Điểm cần cải thiện',
+          items: feedback.weaknesses,
+        ),
+        _FeedbackList(
+          icon: Icons.trending_up,
+          title: 'Đề xuất cải thiện',
+          items: feedback.improvements,
+        ),
+      ],
+    );
+  }
+}
+
+class _FeedbackList extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final List<String> items;
+
+  const _FeedbackList({
+    required this.icon,
+    required this.title,
+    required this.items,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18),
+              const SizedBox(width: 8),
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ...items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(left: 26, bottom: 4),
+              child: Text('• $item'),
+            ),
+          ),
+        ],
       ),
     );
   }

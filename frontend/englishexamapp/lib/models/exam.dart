@@ -34,6 +34,7 @@ class ExamSection {
   final String passageContent;
   final String mediaUrl;
   final int sectionOrder;
+  final int questionCount;
   final List<Question> questions;
 
   ExamSection({
@@ -42,6 +43,7 @@ class ExamSection {
     required this.passageContent,
     required this.mediaUrl,
     required this.sectionOrder,
+    required this.questionCount,
     required this.questions,
   });
 
@@ -54,6 +56,7 @@ class ExamSection {
       passageContent: (json['passageContent'] as String?) ?? '',
       mediaUrl: (json['mediaUrl'] as String?) ?? '',
       sectionOrder: (json['sectionOrder'] as int?) ?? 0,
+      questionCount: (json['questionCount'] as int?) ?? questionsJson.length,
       questions: questionsJson
           .map((item) => Question.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -65,6 +68,9 @@ class Question {
   final int id;
   final String questionType;
   final String content;
+  final String? imageUrl;
+  final int? durationSeconds;
+  final int? preparationSeconds;
   final int orderIndex;
   final List<AnswerOption> answers;
 
@@ -72,6 +78,9 @@ class Question {
     required this.id,
     required this.questionType,
     required this.content,
+    this.imageUrl,
+    this.durationSeconds,
+    this.preparationSeconds,
     required this.orderIndex,
     required this.answers,
   });
@@ -83,12 +92,33 @@ class Question {
       id: json['id'] as int,
       questionType: json['questionType'] as String,
       content: (json['content'] as String?) ?? '',
+      imageUrl: _readOptionalString(json['imageUrl']),
+      durationSeconds: _toInt(json['durationSeconds']),
+      preparationSeconds: _toInt(json['preparationSeconds']),
       orderIndex: (json['orderIndex'] as int?) ?? 0,
       answers: answersJson
           .map((item) => AnswerOption.fromJson(item as Map<String, dynamic>))
           .toList(),
     );
   }
+}
+
+String? _readOptionalString(dynamic value) {
+  final text = value?.toString().trim();
+  return text == null || text.isEmpty ? null : text;
+}
+
+int? _toInt(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  return int.tryParse(value.toString());
 }
 
 class AnswerOption {

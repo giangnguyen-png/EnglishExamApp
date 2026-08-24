@@ -139,9 +139,14 @@ public class ExpertMockSessionController {
 		User currentExpert = getCurrentUser(authentication);
 		MockSession session = this.mockSessionService.findById(sessionId);
 		validateSessionOwner(session, currentExpert);
-		List<ExpertRegistrationResponse> registrations = this.sessionRegistrationService.findBySession(sessionId).stream()
+		Map<Integer, TestAttempt> attemptByUserId = this.testAttemptService.findBySession(sessionId).stream()
+				.collect(Collectors.toMap(attempt -> attempt.getUser().getId(), Function.identity(),
+						(existing, replacement) -> existing));
+		List<ExpertRegistrationResponse> registrations = this.sessionRegistrationService.findBySession(sessionId)
+				.stream()
 				.sorted(Comparator.comparing(SessionRegistration::getCandidateNumber))
-				.map(ExpertRegistrationResponse::from)
+				.map(registration -> ExpertRegistrationResponse.from(registration,
+						attemptByUserId.get(registration.getUser().getId())))
 				.toList();
 		return ResponseEntity.ok(registrations);
 	}

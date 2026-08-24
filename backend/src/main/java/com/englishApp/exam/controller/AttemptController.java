@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.englishApp.exam.dto.attempt.AttemptHistoryResponse;
 import com.englishApp.exam.dto.attempt.AttemptResultResponse;
+import com.englishApp.exam.dto.exam.ExamDetailResponse;
 import com.englishApp.exam.model.TestAttempt;
 import com.englishApp.exam.model.User;
 import com.englishApp.exam.service.TestAttemptService;
@@ -46,6 +47,18 @@ public class AttemptController {
 		TestAttempt attempt = this.testAttemptService.findById(attemptId);
 		validateAttemptOwner(attempt, currentUser);
 		return ResponseEntity.ok(AttemptResultResponse.from(attempt));
+	}
+
+	@GetMapping("/{attemptId}/exam")
+	public ResponseEntity<ExamDetailResponse> findAttemptExam(@PathVariable Integer attemptId,
+			Authentication authentication) {
+		User currentUser = getCurrentUser(authentication);
+		TestAttempt attempt = this.testAttemptService.findById(attemptId);
+		validateAttemptOwner(attempt, currentUser);
+		if (attempt.getEndTime() != null) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submitted attempts cannot load active exam content");
+		}
+		return ResponseEntity.ok(ExamDetailResponse.from(attempt.getExam()));
 	}
 
 	@PostMapping("/{attemptId}/submit")

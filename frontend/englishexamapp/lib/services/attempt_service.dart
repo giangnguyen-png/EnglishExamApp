@@ -1,4 +1,5 @@
 import '../models/attempt.dart';
+import '../models/exam.dart';
 import '../models/result.dart';
 import 'api_service.dart';
 
@@ -18,6 +19,11 @@ class AttemptService {
   Future<AttemptResult> getAttemptResult(int attemptId) async {
     final response = await ApiService.dio.get('/api/attempts/$attemptId');
     return AttemptResult.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<Exam> getAttemptExam(int attemptId) async {
+    final response = await ApiService.dio.get('/api/attempts/$attemptId/exam');
+    return Exam.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<List<AttemptHistory>> getAttemptHistory() async {

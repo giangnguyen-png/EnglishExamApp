@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../config/ielts_time.dart';
 import '../../models/attempt.dart';
 import '../../models/exam.dart';
 import '../../services/api_service.dart';
@@ -21,6 +24,8 @@ class _WritingScreenState extends State<WritingScreen> {
   final Map<int, TextEditingController> _controllers = {};
 
   late final List<Question> _writingQuestions;
+  Timer? _timer;
+  Duration _remainingTime = IeltsTime.writing;
   bool _isSaving = false;
 
   @override
@@ -36,28 +41,32 @@ class _WritingScreenState extends State<WritingScreen> {
     for (final question in _writingQuestions) {
       _controllers[question.id] = TextEditingController();
     }
+    _startTimer();
   }
 
   @override
   void dispose() {
+    _timer?.cancel();
     for (final controller in _controllers.values) {
       controller.dispose();
     }
     super.dispose();
   }
 
-  Future<void> _saveWriting() async {
-    for (final question in _writingQuestions) {
-      final text = _controllers[question.id]!.text.trim();
-      if (text.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Vui lòng nhập bài Writing Task ${_taskNumber(question)}.',
+  Future<void> _saveWriting({bool requireAllAnswers = true}) async {
+    if (requireAllAnswers) {
+      for (final question in _writingQuestions) {
+        final text = _controllers[question.id]!.text.trim();
+        if (text.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Vui lòng nhập bài Writing Task ${_taskNumber(question)}.',
+              ),
             ),
-          ),
-        );
-        return;
+          );
+          return;
+        }
       }
     }
 
@@ -67,14 +76,18 @@ class _WritingScreenState extends State<WritingScreen> {
 
     try {
       for (final question in _writingQuestions) {
-        await _responseService.submitWriting(
-          widget.attempt.attemptId,
-          question.id,
-          _controllers[question.id]!.text.trim(),
-        );
+        final text = _controllers[question.id]!.text.trim();
+        if (text.isNotEmpty) {
+          await _responseService.submitWriting(
+            widget.attempt.attemptId,
+            question.id,
+            text,
+          );
+        }
       }
 
       if (!mounted) return;
+      _timer?.cancel();
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -97,6 +110,7 @@ class _WritingScreenState extends State<WritingScreen> {
   }
 
   void _skipToSpeaking() {
+    _timer?.cancel();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -109,7 +123,15 @@ class _WritingScreenState extends State<WritingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Writing')),
+      appBar: AppBar(
+        title: const Text('Writing'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(child: Text(_formatDuration(_remainingTime))),
+          ),
+        ],
+      ),
       body: _writingQuestions.isEmpty
           ? Center(
               child: Padding(
@@ -134,11 +156,13 @@ class _WritingScreenState extends State<WritingScreen> {
                   'Writing',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
+                const SizedBox(height: 6),
+                Text('Thời gian còn lại: ${_formatDuration(_remainingTime)}'),
                 const SizedBox(height: 12),
                 ..._writingQuestions.map(_buildWritingTask),
                 const SizedBox(height: 12),
                 FilledButton.icon(
-                  onPressed: _isSaving ? null : _saveWriting,
+                  onPressed: _isSaving ? null : () => _saveWriting(),
                   icon: _isSaving
                       ? const SizedBox(
                           width: 18,
@@ -168,8 +192,19 @@ class _WritingScreenState extends State<WritingScreen> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
-            Text(question.content),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(question.content),
+              ),
+            ),
+            _buildQuestionImage(question),
             const SizedBox(height: 12),
+            Text(
+              'Bài viết của bạn',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: controller,
               maxLines: null,
@@ -181,7 +216,10 @@ class _WritingScreenState extends State<WritingScreen> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 8),
-            Text('Số từ: ${_wordCount(controller.text)}'),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Chip(label: Text('Số từ: ${_wordCount(controller.text)}')),
+            ),
           ],
         ),
       ),
@@ -201,5 +239,60 @@ class _WritingScreenState extends State<WritingScreen> {
       return 0;
     }
     return trimmed.split(RegExp(r'\s+')).length;
+  }
+
+  Widget _buildQuestionImage(Question question) {
+    final imageUrl = question.imageUrl;
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          imageUrl,
+          fit: BoxFit.contain,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) {
+              return child;
+            }
+            return const SizedBox(
+              height: 180,
+              child: Center(child: CircularProgressIndicator()),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_remainingTime.inSeconds <= 1) {
+        setState(() {
+          _remainingTime = Duration.zero;
+        });
+        _timer?.cancel();
+        _saveWriting(requireAllAnswers: false);
+        return;
+      }
+      setState(() {
+        _remainingTime -= const Duration(seconds: 1);
+      });
+    });
+  }
+
+  String _formatDuration(Duration duration) {
+    final totalSeconds = duration.inSeconds.clamp(0, 24 * 60 * 60);
+    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 }

@@ -16,5 +16,7 @@ public interface TestAttemptService {
 
 	List<TestAttempt> findByUser(Integer userId);
 
+	List<TestAttempt> findBySession(Integer sessionId);
+
 	BigDecimal calculateOverallBand(Integer attemptId);
 }

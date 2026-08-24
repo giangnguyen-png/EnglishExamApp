@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/mock_session.dart';
 import '../../services/api_service.dart';
 import '../../services/expert_service.dart';
+import '../../widgets/state_views.dart';
 import 'expert_session_detail_screen.dart';
 import 'session_form_screen.dart';
 
@@ -85,26 +86,15 @@ class _ExpertSessionListScreenState extends State<ExpertSessionListScreen> {
   }
 
   Widget _buildBody() {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_errorMessage != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_errorMessage!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: _loadSessions,
-                child: const Text('Thử lại'),
-              ),
-            ],
-          ),
-        ),
-      );
+    if (_isLoading) {
+      return const LoadingView(message: 'Đang tải ca thi của bạn...');
     }
-    if (_sessions.isEmpty) return const Center(child: Text('Chưa có ca thi.'));
+    if (_errorMessage != null) {
+      return ErrorView(message: _errorMessage!, onRetry: _loadSessions);
+    }
+    if (_sessions.isEmpty) {
+      return const EmptyState(icon: Icons.event, message: 'Chưa có ca thi.');
+    }
 
     return RefreshIndicator(
       onRefresh: _loadSessions,
@@ -119,8 +109,8 @@ class _ExpertSessionListScreenState extends State<ExpertSessionListScreen> {
               title: Text(session.roomCode),
               subtitle: Text(
                 '${session.examTitle}\n'
-                '${_formatDateTime(session.startTime)}\n'
-                '${session.status}',
+                '${formatDateTime(session.startTime)}\n'
+                '${_statusLabel(session.status)}',
               ),
               isThreeLine: true,
               trailing: const Icon(Icons.chevron_right),
@@ -133,11 +123,15 @@ class _ExpertSessionListScreenState extends State<ExpertSessionListScreen> {
   }
 }
 
-String _formatDateTime(String raw) {
-  final date = DateTime.tryParse(raw);
-  if (date == null) return raw.isEmpty ? 'Chưa có' : raw;
-  return '${date.day.toString().padLeft(2, '0')}/'
-      '${date.month.toString().padLeft(2, '0')}/${date.year} '
-      '${date.hour.toString().padLeft(2, '0')}:'
-      '${date.minute.toString().padLeft(2, '0')}';
+String _statusLabel(String status) {
+  switch (status) {
+    case 'PENDING':
+      return 'Đang chờ';
+    case 'ONGOING':
+      return 'Đang thi';
+    case 'COMPLETED':
+      return 'Đã kết thúc';
+    default:
+      return status;
+  }
 }

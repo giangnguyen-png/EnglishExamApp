@@ -35,6 +35,10 @@ public class QuestionServiceImpl implements QuestionService {
 		question.setContent(updatedQuestion.getContent());
 		question.setPoints(updatedQuestion.getPoints());
 		question.setOrderIndex(updatedQuestion.getOrderIndex());
+		question.setImageUrl(updatedQuestion.getImageUrl());
+		question.setImagePublicId(updatedQuestion.getImagePublicId());
+		question.setDurationSeconds(updatedQuestion.getDurationSeconds());
+		question.setPreparationSeconds(updatedQuestion.getPreparationSeconds());
 		return this.questionRepository.save(question);
 	}
 
@@ -67,6 +71,21 @@ public class QuestionServiceImpl implements QuestionService {
 		}
 		if (question.getPoints() < 0) {
 			throw new RuntimeException("Question points must be greater than or equal to 0");
+		}
+		if (question.getPreparationSeconds() != null && question.getDurationSeconds() == null) {
+			throw new RuntimeException("Question duration is required when preparation time is provided");
+		}
+		if (question.getDurationSeconds() != null) {
+			if (question.getDurationSeconds() <= 0) {
+				throw new RuntimeException("Question duration must be greater than 0");
+			}
+			if (question.getPreparationSeconds() != null
+					&& question.getPreparationSeconds() >= question.getDurationSeconds()) {
+				throw new RuntimeException("Question preparation time must be less than duration");
+			}
+		}
+		if (question.getPreparationSeconds() != null && question.getPreparationSeconds() < 0) {
+			throw new RuntimeException("Question preparation time must be greater than or equal to 0");
 		}
 	}
 }

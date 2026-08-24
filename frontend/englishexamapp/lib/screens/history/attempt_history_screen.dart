@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/result.dart';
 import '../../services/api_service.dart';
 import '../../services/attempt_service.dart';
+import '../../widgets/state_views.dart';
 import '../result/result_screen.dart';
 
 class AttemptHistoryScreen extends StatefulWidget {
@@ -77,34 +78,18 @@ class _AttemptHistoryScreenState extends State<AttemptHistoryScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const LoadingView(message: 'Đang tải lịch sử làm bài...');
     }
 
     if (_errorMessage != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: _loadHistory,
-                child: const Text('Thử lại'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return ErrorView(message: _errorMessage!, onRetry: _loadHistory);
     }
 
     if (_attempts.isEmpty) {
-      return const Center(child: Text('Bạn chưa có lịch sử làm bài.'));
+      return const EmptyState(
+        icon: Icons.history,
+        message: 'Bạn chưa có bài thi trong lịch sử.',
+      );
     }
 
     return RefreshIndicator(
@@ -116,15 +101,33 @@ class _AttemptHistoryScreenState extends State<AttemptHistoryScreen> {
         itemBuilder: (context, index) {
           final attempt = _attempts[index];
           return Card(
-            child: ListTile(
-              title: Text(attempt.examTitle),
-              subtitle: Text(
-                _formatDate(
-                  attempt.endTime.isEmpty ? attempt.startTime : attempt.endTime,
-                ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    attempt.examTitle,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    formatDateTime(
+                      attempt.endTime.isEmpty
+                          ? attempt.startTime
+                          : attempt.endTime,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(_formatBand(attempt.overallBandScore)),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => _openResult(attempt),
+                    icon: const Icon(Icons.bar_chart),
+                    label: const Text('Xem kết quả'),
+                  ),
+                ],
               ),
-              trailing: Text(_formatBand(attempt.overallBandScore)),
-              onTap: () => _openResult(attempt),
             ),
           );
         },
@@ -132,24 +135,10 @@ class _AttemptHistoryScreenState extends State<AttemptHistoryScreen> {
     );
   }
 
-  String _formatDate(String raw) {
-    if (raw.isEmpty) {
-      return 'Chưa có ngày';
-    }
-
-    final date = DateTime.tryParse(raw);
-    if (date == null) {
-      return raw;
-    }
-
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
-
   String _formatBand(double? value) {
     if (value == null) {
-      return 'Chưa có điểm';
+      return 'Đang chờ kết quả';
     }
-    return 'Band ${value.toStringAsFixed(1)}';
+    return 'Overall Band ${value.toStringAsFixed(1)}';
   }
 }

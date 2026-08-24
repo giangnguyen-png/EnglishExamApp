@@ -82,6 +82,8 @@ class ExpertRegistration {
   final int candidateNumber;
   final int userId;
   final String username;
+  final int? attemptId;
+  final double? overallBandScore;
   final String registeredAt;
 
   ExpertRegistration({
@@ -89,6 +91,8 @@ class ExpertRegistration {
     required this.candidateNumber,
     required this.userId,
     required this.username,
+    this.attemptId,
+    this.overallBandScore,
     required this.registeredAt,
   });
 
@@ -98,9 +102,21 @@ class ExpertRegistration {
       candidateNumber: (json['candidateNumber'] as int?) ?? 0,
       userId: json['userId'] as int,
       username: (json['username'] as String?) ?? '',
+      attemptId: json['attemptId'] as int?,
+      overallBandScore: _toDouble(json['overallBandScore']),
       registeredAt: (json['registeredAt'] as String?) ?? '',
     );
   }
+}
+
+double? _toDouble(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is num) {
+    return value.toDouble();
+  }
+  return double.tryParse(value.toString());
 }
 
 class SpeakingAttempt {
