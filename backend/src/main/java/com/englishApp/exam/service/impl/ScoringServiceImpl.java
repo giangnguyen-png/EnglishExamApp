@@ -246,7 +246,7 @@ public class ScoringServiceImpl implements ScoringService {
 			return BigDecimal.ZERO.setScale(1);
 		}
 		if (response.getAiScore() == null) {
-			throw new RuntimeException("Writing AI score is missing");
+			return BigDecimal.ZERO.setScale(1);
 		}
 		return response.getAiScore();
 	}

@@ -16,6 +16,13 @@ class AttemptService {
     return AttemptResult.fromJson(response.data as Map<String, dynamic>);
   }
 
+  Future<AttemptResult> forceSubmitAttempt(int attemptId) async {
+    final response = await ApiService.dio.post(
+      '/api/attempts/$attemptId/force-submit',
+    );
+    return AttemptResult.fromJson(response.data as Map<String, dynamic>);
+  }
+
   Future<AttemptResult> getAttemptResult(int attemptId) async {
     final response = await ApiService.dio.get('/api/attempts/$attemptId');
     return AttemptResult.fromJson(response.data as Map<String, dynamic>);

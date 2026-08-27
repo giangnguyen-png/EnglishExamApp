@@ -6,8 +6,12 @@ import 'package:just_audio/just_audio.dart';
 import '../../config/ielts_time.dart';
 import '../../models/attempt.dart';
 import '../../models/exam.dart';
+import '../../models/result.dart';
 import '../../services/api_service.dart';
+import '../../services/attempt_service.dart';
+import '../../services/mock_session_service.dart';
 import '../../services/response_service.dart';
+import '../result/result_screen.dart';
 import 'writing_screen.dart';
 
 class TestScreen extends StatefulWidget {
@@ -28,6 +32,8 @@ class TestScreen extends StatefulWidget {
 
 class _TestScreenState extends State<TestScreen> {
   final _responseService = ResponseService();
+  final _attemptService = AttemptService();
+  final _mockSessionService = MockSessionService();
   final _audioPlayer = AudioPlayer();
 
   late final List<ExamSection> _practiceSections;
@@ -39,8 +45,10 @@ class _TestScreenState extends State<TestScreen> {
   final Map<int, bool> _listeningCompleted = {};
   StreamSubscription<PlayerState>? _playerStateSubscription;
   Timer? _skillTimer;
+  Timer? _sessionPollingTimer;
   Duration _remainingTime = Duration.zero;
   String? _activeSkillType;
+  bool _sessionFinished = false;
 
   int? _activeAudioSectionId;
   bool _isAudioLoading = false;
@@ -82,17 +90,22 @@ class _TestScreenState extends State<TestScreen> {
     if (_practiceSections.isNotEmpty) {
       _startSkillTimer(_practiceSections.first.skillType);
     }
+    _startSessionPolling();
   }
 
   @override
   void dispose() {
     _skillTimer?.cancel();
+    _sessionPollingTimer?.cancel();
     _playerStateSubscription?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }
 
   Future<void> _saveAnswer(Question question, Set<int> answerIds) async {
+    if (_sessionFinished) {
+      return;
+    }
     setState(() {
       _savingQuestionIds.add(question.id);
     });
@@ -118,7 +131,7 @@ class _TestScreenState extends State<TestScreen> {
   }
 
   void _selectSingleAnswer(Question question, int answerId) {
-    if (_savingQuestionIds.contains(question.id)) {
+    if (_sessionFinished || _savingQuestionIds.contains(question.id)) {
       return;
     }
 
@@ -130,7 +143,7 @@ class _TestScreenState extends State<TestScreen> {
   }
 
   void _toggleMultipleAnswer(Question question, int answerId, bool checked) {
-    if (_savingQuestionIds.contains(question.id)) {
+    if (_sessionFinished || _savingQuestionIds.contains(question.id)) {
       return;
     }
 
@@ -192,6 +205,9 @@ class _TestScreenState extends State<TestScreen> {
   }
 
   Future<void> _openWriting() async {
+    if (_sessionFinished) {
+      return;
+    }
     _skillTimer?.cancel();
     await _stopListeningAudio();
     if (!mounted) return;
@@ -218,7 +234,7 @@ class _TestScreenState extends State<TestScreen> {
                 const Text('Đề thi chưa có câu hỏi Listening hoặc Reading.'),
                 const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: _openWriting,
+                  onPressed: _sessionFinished ? null : _openWriting,
                   child: const Text('Tiếp tục Writing'),
                 ),
               ],
@@ -331,7 +347,9 @@ class _TestScreenState extends State<TestScreen> {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: currentNumber == 1 || isSavingCurrentQuestion
+                  onPressed: _sessionFinished ||
+                          currentNumber == 1 ||
+                          isSavingCurrentQuestion
                       ? null
                       : _previousQuestion,
                   child: const Text('Trước'),
@@ -340,7 +358,9 @@ class _TestScreenState extends State<TestScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  onPressed: isSavingCurrentQuestion ? null : _nextQuestion,
+                  onPressed: _sessionFinished || isSavingCurrentQuestion
+                      ? null
+                      : _nextQuestion,
                   child: Text(
                     currentNumber == totalQuestions ? 'Tiếp tục' : 'Sau',
                   ),
@@ -384,7 +404,7 @@ class _TestScreenState extends State<TestScreen> {
             Text(_listeningHint(playCount, isPlaying, isPaused)),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: _isAudioLoading || hasNoPlayLeft
+              onPressed: _sessionFinished || _isAudioLoading || hasNoPlayLeft
                   ? null
                   : () => _handleListeningAudioButton(section),
               icon: _isAudioLoading && isActiveSection
@@ -554,7 +574,7 @@ class _TestScreenState extends State<TestScreen> {
   List<Widget> _buildAnswerOptions(Question question) {
     final selected = _selectedAnswers[question.id] ?? {};
     final isMultiple = question.questionType == 'MULTIPLE_CHOICE';
-    final isSaving = _savingQuestionIds.contains(question.id);
+    final isSaving = _savingQuestionIds.contains(question.id) || _sessionFinished;
 
     if (question.answers.isEmpty) {
       return [const Text('Câu hỏi này chưa có đáp án lựa chọn.')];
@@ -676,6 +696,60 @@ class _TestScreenState extends State<TestScreen> {
       }
     }
     _openWriting();
+  }
+
+  void _startSessionPolling() {
+    final sessionId = widget.attempt.sessionId;
+    if (sessionId == null) {
+      return;
+    }
+    _sessionPollingTimer?.cancel();
+    _sessionPollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      unawaited(_checkSessionStatus(sessionId));
+    });
+  }
+
+  Future<void> _checkSessionStatus(int sessionId) async {
+    if (_sessionFinished) {
+      return;
+    }
+    try {
+      final session = await _mockSessionService.getSession(sessionId);
+      if (session.status == 'COMPLETED') {
+        await _handleSessionCompleted();
+      }
+    } catch (_) {
+      // Keep the local test running if a transient polling request fails.
+    }
+  }
+
+  Future<void> _handleSessionCompleted() async {
+    if (_sessionFinished) {
+      return;
+    }
+    setState(() {
+      _sessionFinished = true;
+    });
+    _sessionPollingTimer?.cancel();
+    _skillTimer?.cancel();
+    await _stopListeningAudio();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Ca thi đã kết thúc. Hệ thống đang chấm phần bài bạn đã hoàn thành.',
+        ),
+      ),
+    );
+    final AttemptResult result = await _attemptService.forceSubmitAttempt(
+      widget.attempt.attemptId,
+    );
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => ResultScreen(result: result)),
+      (route) => route.isFirst,
+    );
   }
 
   String _formatDuration(Duration duration) {

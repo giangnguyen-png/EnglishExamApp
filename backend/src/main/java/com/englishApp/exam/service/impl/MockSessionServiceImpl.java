@@ -9,20 +9,30 @@ import com.englishApp.exam.model.MockSession;
 import com.englishApp.exam.model.enums.MockSessionStatus;
 import com.englishApp.exam.repository.ExamRepository;
 import com.englishApp.exam.repository.MockSessionRepository;
+import com.englishApp.exam.repository.SessionRegistrationRepository;
+import com.englishApp.exam.repository.TestAttemptRepository;
 import com.englishApp.exam.repository.UserRepository;
 import com.englishApp.exam.service.MockSessionService;
+import com.englishApp.exam.service.TestAttemptService;
 
 @Service
 public class MockSessionServiceImpl implements MockSessionService {
 	private final MockSessionRepository mockSessionRepository;
 	private final UserRepository userRepository;
 	private final ExamRepository examRepository;
+	private final SessionRegistrationRepository sessionRegistrationRepository;
+	private final TestAttemptRepository testAttemptRepository;
+	private final TestAttemptService testAttemptService;
 
 	public MockSessionServiceImpl(MockSessionRepository mockSessionRepository, UserRepository userRepository,
-			ExamRepository examRepository) {
+			ExamRepository examRepository, SessionRegistrationRepository sessionRegistrationRepository,
+			TestAttemptRepository testAttemptRepository, TestAttemptService testAttemptService) {
 		this.mockSessionRepository = mockSessionRepository;
 		this.userRepository = userRepository;
 		this.examRepository = examRepository;
+		this.sessionRegistrationRepository = sessionRegistrationRepository;
+		this.testAttemptRepository = testAttemptRepository;
+		this.testAttemptService = testAttemptService;
 	}
 
 	public MockSession createSession(MockSession session) {
@@ -66,7 +76,18 @@ public class MockSessionServiceImpl implements MockSessionService {
 	public void deleteSession(Integer id) {
 		MockSession session = this.findById(id);
 		if (session.getStatus() != MockSessionStatus.PENDING) {
-			throw new RuntimeException("Only pending sessions can be deleted");
+			throw new RuntimeException("Chỉ có thể xóa ca thi đang chờ bắt đầu.");
+		}
+		if (hasSessionData(id)) {
+			throw new RuntimeException("Không thể xóa ca thi đã có dữ liệu thí sinh.");
+		}
+		this.mockSessionRepository.delete(session);
+	}
+
+	public void deleteSessionByAdmin(Integer id) {
+		MockSession session = this.findById(id);
+		if (hasSessionData(id)) {
+			throw new RuntimeException("Không thể xóa ca thi đã có dữ liệu thí sinh.");
 		}
 		this.mockSessionRepository.delete(session);
 	}
@@ -108,7 +129,10 @@ public class MockSessionServiceImpl implements MockSessionService {
 			throw new RuntimeException("Only ongoing sessions can be finished");
 		}
 		session.setStatus(MockSessionStatus.COMPLETED);
-		return this.mockSessionRepository.save(session);
+		MockSession savedSession = this.mockSessionRepository.save(session);
+		this.testAttemptRepository.findBySessionIdAndEndTimeIsNull(id)
+				.forEach(attempt -> this.testAttemptService.forceSubmitAttempt(attempt.getId()));
+		return savedSession;
 	}
 
 	private void validateSession(MockSession session) {
@@ -145,5 +169,10 @@ public class MockSessionServiceImpl implements MockSessionService {
 						|| existing.getExpert().getId().equals(session.getExpert().getId()))
 				.anyMatch(existing -> session.getStartTime().isBefore(existing.getEndTime())
 						&& session.getEndTime().isAfter(existing.getStartTime()));
+	}
+
+	private boolean hasSessionData(Integer sessionId) {
+		return this.sessionRegistrationRepository.countBySessionId(sessionId) > 0
+				|| this.testAttemptRepository.countBySessionId(sessionId) > 0;
 	}
 }

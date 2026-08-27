@@ -2,6 +2,7 @@ package com.englishApp.exam.service.impl;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.englishApp.exam.dto.ai.AiFeedback;
 import com.englishApp.exam.dto.ai.AiEvaluationResult;
+import com.englishApp.exam.model.Answer;
 import com.englishApp.exam.model.Exam;
 import com.englishApp.exam.model.MockSession;
 import com.englishApp.exam.model.Question;
@@ -23,6 +25,7 @@ import com.englishApp.exam.model.UserResponse;
 import com.englishApp.exam.model.enums.MockSessionStatus;
 import com.englishApp.exam.model.enums.SkillType;
 import com.englishApp.exam.repository.ExamRepository;
+import com.englishApp.exam.repository.AnswerRepository;
 import com.englishApp.exam.repository.MockSessionRepository;
 import com.englishApp.exam.repository.QuestionRepository;
 import com.englishApp.exam.repository.SessionRegistrationRepository;
@@ -31,9 +34,11 @@ import com.englishApp.exam.repository.TestAttemptRepository;
 import com.englishApp.exam.repository.UserRepository;
 import com.englishApp.exam.repository.UserResponseRepository;
 import com.englishApp.exam.service.AiService;
+import com.englishApp.exam.service.QuestionAnswerRules;
 import com.englishApp.exam.service.ScoringService;
 import com.englishApp.exam.service.TestAttemptService;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
@@ -42,6 +47,7 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 	private final UserRepository userRepository;
 	private final ExamRepository examRepository;
 	private final MockSessionRepository mockSessionRepository;
+	private final AnswerRepository answerRepository;
 	private final SessionRegistrationRepository sessionRegistrationRepository;
 	private final QuestionRepository questionRepository;
 	private final UserResponseRepository userResponseRepository;
@@ -52,6 +58,7 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 
 	public TestAttemptServiceImpl(TestAttemptRepository testAttemptRepository, UserRepository userRepository,
 			ExamRepository examRepository, MockSessionRepository mockSessionRepository,
+			AnswerRepository answerRepository,
 			SessionRegistrationRepository sessionRegistrationRepository, QuestionRepository questionRepository,
 			UserResponseRepository userResponseRepository, SkillResultRepository skillResultRepository,
 			AiService aiService, ScoringService scoringService) {
@@ -59,6 +66,7 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 		this.userRepository = userRepository;
 		this.examRepository = examRepository;
 		this.mockSessionRepository = mockSessionRepository;
+		this.answerRepository = answerRepository;
 		this.sessionRegistrationRepository = sessionRegistrationRepository;
 		this.questionRepository = questionRepository;
 		this.userResponseRepository = userResponseRepository;
@@ -74,6 +82,7 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 		if (exam.isPremiumOnly() && sessionId == null) {
 			throw new RuntimeException("Premium exam must be taken through a mock session");
 		}
+		validateExamReadyForAttempt(examId);
 
 		TestAttempt attempt = new TestAttempt();
 		attempt.setUser(user);
@@ -98,23 +107,39 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 			validatePremiumSpeakingComplete(attempt);
 		}
 
+		finalizeAttempt(attempt, false);
+		return this.testAttemptRepository.save(attempt);
+	}
+
+	@Transactional
+	public TestAttempt forceSubmitAttempt(Integer attemptId) {
+		TestAttempt attempt = this.findById(attemptId);
+		if (attempt.getEndTime() != null) {
+			return attempt;
+		}
+		finalizeAttempt(attempt, true);
+		return this.testAttemptRepository.save(attempt);
+	}
+
+	private void finalizeAttempt(TestAttempt attempt, boolean forced) {
+		Integer attemptId = attempt.getId();
 		attempt.setEndTime(LocalDateTime.now());
 		saveSkillResult(attempt, SkillType.LISTENING,
 				this.scoringService.calculateObjectiveBand(attemptId, SkillType.LISTENING), null);
 		saveSkillResult(attempt, SkillType.READING,
 				this.scoringService.calculateObjectiveBand(attemptId, SkillType.READING), null);
+		finalizeWritingResponses(attempt);
 		saveSkillResult(attempt, SkillType.WRITING, this.scoringService.calculateWritingBand(attemptId),
 				buildAiAnalysis(attemptId, SkillType.WRITING));
 
 		if (attempt.getSession() == null) {
-			saveNormalSpeakingSkillResult(attempt);
+			saveNormalSpeakingSkillResult(attempt, forced);
 		} else {
-			savePremiumSpeakingSkillResultOnSubmit(attempt);
+			savePremiumSpeakingSkillResult(attempt, forced);
 		}
 
 		attempt.setOverallBandScore(this.scoringService.calculateOverallBand(attemptId));
 		attempt.setAiOverallFeedback(buildOverallFeedbackJson(attemptId));
-		return this.testAttemptRepository.save(attempt);
 	}
 
 	@Transactional
@@ -147,6 +172,24 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 	public TestAttempt findById(Integer id) {
 		return this.testAttemptRepository.findById(id)
 				.orElseThrow(() -> new RuntimeException("Test attempt not found"));
+	}
+
+	public void validateExamReadyForAttempt(Integer examId) {
+		List<Question> questions = this.questionRepository.findByExamSectionExamId(examId);
+		for (Question question : questions) {
+			if (!QuestionAnswerRules.usesChoiceAnswers(question.getQuestionType())) {
+				continue;
+			}
+			List<Answer> answers = this.answerRepository.findByQuestionId(question.getId());
+			long correctCount = answers.stream().filter(Answer::isCorrect).count();
+			boolean validSingleCorrect = QuestionAnswerRules.isSingleCorrectChoice(question.getQuestionType())
+					&& answers.size() >= 1 && correctCount == 1;
+			boolean validMultipleCorrect = QuestionAnswerRules.isMultipleCorrectChoice(question.getQuestionType())
+					&& answers.size() >= 1 && correctCount >= 1;
+			if (!validSingleCorrect && !validMultipleCorrect) {
+				throw new RuntimeException("Đề thi chưa được cấu hình đầy đủ.");
+			}
+		}
 	}
 
 	public List<TestAttempt> findByUser(Integer userId) {
@@ -211,20 +254,71 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 		return this.skillResultRepository.save(result);
 	}
 
-	private void saveNormalSpeakingSkillResult(TestAttempt attempt) {
+	private void saveWritingAnalysis(UserResponse response, AiEvaluationResult evaluation) {
+		SkillResult result = this.skillResultRepository
+				.findByAttemptIdAndSkillType(response.getAttempt().getId(), SkillType.WRITING)
+				.orElseGet(SkillResult::new);
+		result.setAttempt(response.getAttempt());
+		result.setSkillType(SkillType.WRITING);
+		List<Map<String, Object>> entries = readWritingAnalysis(result.getAiAnalysis());
+		entries.removeIf(entry -> response.getId().equals(entry.get("responseId")));
+		entries.add(Map.of("responseId", response.getId(), "questionId", response.getQuestion().getId(), "score",
+				evaluation.score(), "feedback", evaluation.feedback()));
+		result.setAiAnalysis(writeWritingAnalysis(entries));
+		this.skillResultRepository.save(result);
+	}
+
+	private List<Map<String, Object>> readWritingAnalysis(String analysis) {
+		if (analysis == null || analysis.isBlank()) {
+			return new ArrayList<>();
+		}
+		try {
+			return new ArrayList<>(
+					this.objectMapper.readValue(analysis, new TypeReference<List<Map<String, Object>>>() {
+					}));
+		} catch (JsonProcessingException e) {
+			return new ArrayList<>();
+		}
+	}
+
+	private String writeWritingAnalysis(List<Map<String, Object>> entries) {
+		try {
+			return this.objectMapper.writeValueAsString(entries);
+		} catch (JsonProcessingException e) {
+			throw new IllegalStateException("Could not serialize AI analysis", e);
+		}
+	}
+
+	private void saveNormalSpeakingSkillResult(TestAttempt attempt, boolean forced) {
+		List<Question> speakingQuestions = this.questionRepository
+				.findByExamSectionExamIdAndExamSectionSkillTypeOrderByExamSectionSectionOrderAscOrderIndexAsc(
+						attempt.getExam().getId(), SkillType.SPEAKING);
 		List<UserResponse> speakingResponses = this.userResponseRepository
 				.findByAttemptIdAndQuestionExamSectionSkillType(attempt.getId(), SkillType.SPEAKING);
-		if (speakingResponses.isEmpty()) {
+		List<UserResponse> validResponses = speakingResponses.stream().filter(this::hasValidSpeakingAudio).toList();
+		if (validResponses.isEmpty()) {
 			saveSkillResult(attempt, SkillType.SPEAKING, BigDecimal.ZERO.setScale(1), null);
 			return;
 		}
 		AiEvaluationResult evaluation = this.aiService.evaluateSpeakingAttempt(buildSpeakingAttemptContent(attempt,
-				speakingResponses));
-		saveSkillResult(attempt, SkillType.SPEAKING, this.scoringService.roundToHalfBand(evaluation.score().doubleValue()),
+				validResponses));
+		BigDecimal score = this.scoringService.roundToHalfBand(evaluation.score().doubleValue());
+		if (forced && !speakingQuestions.isEmpty() && validResponses.size() < speakingQuestions.size()) {
+			score = this.scoringService.roundToHalfBand(
+					score.doubleValue() * validResponses.size() / speakingQuestions.size());
+		}
+		saveSkillResult(attempt, SkillType.SPEAKING, score,
 				writeEvaluationAnalysis(evaluation));
 	}
 
-	private void savePremiumSpeakingSkillResultOnSubmit(TestAttempt attempt) {
+	private void savePremiumSpeakingSkillResult(TestAttempt attempt, boolean forced) {
+		List<UserResponse> speakingResponses = this.userResponseRepository
+				.findByAttemptIdAndQuestionExamSectionSkillType(attempt.getId(), SkillType.SPEAKING).stream()
+				.filter(this::hasValidSpeakingAudio).toList();
+		if (forced && speakingResponses.isEmpty()) {
+			saveSkillResult(attempt, SkillType.SPEAKING, BigDecimal.ZERO.setScale(1), null);
+			return;
+		}
 		SkillResult result = this.skillResultRepository
 				.findByAttemptIdAndSkillType(attempt.getId(), SkillType.SPEAKING)
 				.orElseGet(SkillResult::new);
@@ -236,6 +330,31 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 		result.setBandScore(null);
 		result.setAiAnalysis(null);
 		this.skillResultRepository.save(result);
+	}
+
+	private void finalizeWritingResponses(TestAttempt attempt) {
+		List<Question> writingQuestions = this.questionRepository
+				.findByExamSectionExamIdAndExamSectionSkillTypeOrderByExamSectionSectionOrderAscOrderIndexAsc(
+						attempt.getExam().getId(), SkillType.WRITING);
+		Map<Integer, UserResponse> responseByQuestionId = this.userResponseRepository
+				.findByAttemptIdAndQuestionExamSectionSkillType(attempt.getId(), SkillType.WRITING).stream()
+				.collect(Collectors.toMap(response -> response.getQuestion().getId(), Function.identity()));
+		for (int i = 0; i < writingQuestions.size(); i++) {
+			Question question = writingQuestions.get(i);
+			UserResponse response = responseByQuestionId.get(question.getId());
+			if (response == null || response.getTextContent() == null || response.getTextContent().isBlank()) {
+				continue;
+			}
+			if (response.getAiScore() != null) {
+				continue;
+			}
+			AiEvaluationResult evaluation = this.aiService.evaluateWritingTask(question.getContent(),
+					response.getTextContent(), i == 0 ? 1 : 2);
+			BigDecimal normalizedScore = this.scoringService.roundToHalfBand(evaluation.score().doubleValue());
+			response.setAiScore(normalizedScore);
+			UserResponse savedResponse = this.userResponseRepository.save(response);
+			saveWritingAnalysis(savedResponse, new AiEvaluationResult(normalizedScore, evaluation.feedback()));
+		}
 	}
 
 	private void validatePremiumSpeakingComplete(TestAttempt attempt) {
@@ -310,6 +429,9 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 		}
 		if (session.getStatus() != MockSessionStatus.ONGOING) {
 			throw new RuntimeException("Session has not started");
+		}
+		if (session.getEndTime() != null && !LocalDateTime.now().isBefore(session.getEndTime())) {
+			throw new RuntimeException("Ca thi đã kết thúc.");
 		}
 		if (this.testAttemptRepository.existsByUserIdAndSessionId(userId, sessionId)) {
 			throw new RuntimeException("User already has an attempt for this session");

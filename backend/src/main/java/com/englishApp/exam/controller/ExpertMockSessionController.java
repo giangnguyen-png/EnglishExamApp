@@ -32,6 +32,7 @@ import com.englishApp.exam.dto.mocksession.SpeakingAttemptResponse.SpeakingRespo
 import com.englishApp.exam.dto.mocksession.UpdateMockSessionRequest;
 import com.englishApp.exam.model.Exam;
 import com.englishApp.exam.model.MockSession;
+import com.englishApp.exam.model.Question;
 import com.englishApp.exam.model.SessionRegistration;
 import com.englishApp.exam.model.TestAttempt;
 import com.englishApp.exam.model.User;
@@ -42,6 +43,7 @@ import com.englishApp.exam.service.SessionRegistrationService;
 import com.englishApp.exam.service.TestAttemptService;
 import com.englishApp.exam.service.UserResponseService;
 import com.englishApp.exam.service.UserService;
+import com.englishApp.exam.repository.QuestionRepository;
 
 import jakarta.validation.Valid;
 
@@ -54,16 +56,19 @@ public class ExpertMockSessionController {
 	private final UserResponseService userResponseService;
 	private final UserService userService;
 	private final ExamService examService;
+	private final QuestionRepository questionRepository;
 
 	public ExpertMockSessionController(MockSessionService mockSessionService,
 			SessionRegistrationService sessionRegistrationService, TestAttemptService testAttemptService,
-			UserResponseService userResponseService, UserService userService, ExamService examService) {
+			UserResponseService userResponseService, UserService userService, ExamService examService,
+			QuestionRepository questionRepository) {
 		this.mockSessionService = mockSessionService;
 		this.sessionRegistrationService = sessionRegistrationService;
 		this.testAttemptService = testAttemptService;
 		this.userResponseService = userResponseService;
 		this.userService = userService;
 		this.examService = examService;
+		this.questionRepository = questionRepository;
 	}
 
 	@PostMapping("/mock-sessions")
@@ -196,6 +201,10 @@ public class ExpertMockSessionController {
 	}
 
 	private List<SpeakingAttemptResponse> toSpeakingAttempts(Integer sessionId) {
+		MockSession session = this.mockSessionService.findById(sessionId);
+		List<Question> speakingQuestions = this.questionRepository
+				.findByExamSectionExamIdAndExamSectionSkillTypeOrderByExamSectionSectionOrderAscOrderIndexAsc(
+						session.getExam().getId(), com.englishApp.exam.model.enums.SkillType.SPEAKING);
 		Map<Integer, SessionRegistration> registrationByUserId = this.sessionRegistrationService.findBySession(sessionId)
 				.stream()
 				.collect(Collectors.toMap(registration -> registration.getUser().getId(), Function.identity()));
@@ -206,15 +215,18 @@ public class ExpertMockSessionController {
 		responsesByAttempt.forEach((attempt, responses) -> {
 			SessionRegistration registration = registrationByUserId.get(attempt.getUser().getId());
 			Integer candidateNumber = registration == null ? null : registration.getCandidateNumber();
-			List<SpeakingResponseItem> responseItems = responses.stream()
-					.sorted(Comparator
-							.comparing((UserResponse response) -> response.getQuestion().getExamSection().getSectionOrder())
-							.thenComparing(response -> response.getQuestion().getOrderIndex()))
-					.map(response -> new SpeakingResponseItem(
-							response.getQuestion().getId(),
-							response.getQuestion().getContent(),
-							response.getFileUrl(),
-							response.getSpeechToTextTrans()))
+			Map<Integer, UserResponse> responseByQuestionId = responses.stream()
+					.collect(Collectors.toMap(response -> response.getQuestion().getId(), Function.identity(),
+							(existing, replacement) -> existing));
+			List<SpeakingResponseItem> responseItems = speakingQuestions.stream()
+					.map(question -> {
+						UserResponse response = responseByQuestionId.get(question.getId());
+						if (response == null) {
+							return new SpeakingResponseItem(question.getId(), question.getContent(), "", "Không trả lời");
+						}
+						return new SpeakingResponseItem(response.getQuestion().getId(), response.getQuestion().getContent(),
+								response.getFileUrl(), response.getSpeechToTextTrans());
+					})
 					.toList();
 			attempts.add(new SpeakingAttemptResponse(attempt.getId(), candidateNumber, attempt.getUser().getUsername(),
 					responseItems));

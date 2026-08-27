@@ -10,9 +10,13 @@ public interface TestAttemptService {
 
 	TestAttempt submitAttempt(Integer attemptId);
 
+	TestAttempt forceSubmitAttempt(Integer attemptId);
+
 	TestAttempt gradeSpeakingAttempt(Integer attemptId, Integer expertId, BigDecimal score);
 
 	TestAttempt findById(Integer id);
+
+	void validateExamReadyForAttempt(Integer examId);
 
 	List<TestAttempt> findByUser(Integer userId);
 

@@ -79,6 +79,19 @@ public class MockSessionController {
 		return ResponseEntity.ok(registrations);
 	}
 
+	@GetMapping("/{sessionId}")
+	public ResponseEntity<MockSessionSummaryResponse> findRegisteredSession(@PathVariable Integer sessionId,
+			Authentication authentication) {
+		User currentUser = getCurrentUser(authentication);
+		this.paymentService.requirePremium(currentUser.getId());
+		boolean registered = this.sessionRegistrationService.findByUser(currentUser.getId()).stream()
+				.anyMatch(registration -> registration.getSession().getId().equals(sessionId));
+		if (!registered) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not registered for this session");
+		}
+		return ResponseEntity.ok(MockSessionSummaryResponse.from(this.mockSessionService.findById(sessionId)));
+	}
+
 	@DeleteMapping("/registrations/{registrationId}")
 	public ResponseEntity<Void> cancelRegistration(@PathVariable Integer registrationId, Authentication authentication) {
 		User currentUser = getCurrentUser(authentication);

@@ -20,6 +20,13 @@ import com.google.genai.types.Type;
 public class AiServiceImpl implements AiService {
 	private static final BigDecimal MIN_SCORE = BigDecimal.ZERO;
 	private static final BigDecimal MAX_SCORE = BigDecimal.valueOf(9.0);
+	private static final String VIETNAMESE_DIACRITICS_REQUIREMENT = """
+			All feedback must be written in natural Vietnamese using full Vietnamese Unicode diacritics.
+			Always use Vietnamese tone marks and Vietnamese characters.
+			Correct: "Bạn cần cải thiện độ trôi chảy và sử dụng từ vựng đa dạng hơn."
+			Incorrect: "Ban can cai thien do troi chay va su dung tu vung da dang hon."
+			Never return Vietnamese without diacritics.
+			""";
 
 	@Value("${ai.mock-enabled:false}")
 	private boolean mockEnabled;
@@ -100,6 +107,7 @@ public class AiServiceImpl implements AiService {
 				Return only JSON matching the schema. Give one overall Task %d band score from 0.0 to 9.0 in 0.5 increments.
 				Feedback must be short, specific, useful, and based on the submitted answer.
 				All feedback explanations must be written in Vietnamese.
+				%s
 				The candidate's IELTS answer remains in English.
 				Keep official IELTS criterion names in English when appropriate, for example %s,
 				Coherence and Cohesion, Lexical Resource, and Grammatical Range and Accuracy.
@@ -112,7 +120,8 @@ public class AiServiceImpl implements AiService {
 				User answer:
 				%s
 				"""
-				.formatted(taskNumber, taskCriterion, taskNumber, taskCriterion, safeText(question), answer);
+				.formatted(taskNumber, taskCriterion, taskNumber, VIETNAMESE_DIACRITICS_REQUIREMENT, taskCriterion,
+						safeText(question), answer);
 	}
 
 	private String buildSpeakingAttemptPrompt(String speakingTestContent) {
@@ -132,6 +141,7 @@ public class AiServiceImpl implements AiService {
 				Return only JSON matching the schema. Give one overall Speaking band score from 0.0 to 9.0 in 0.5 increments.
 				Feedback must be short, specific, useful, and must mention that the score is an estimate from transcripts.
 				All feedback explanations must be written in Vietnamese.
+				%s
 				The candidate's IELTS transcript remains in English.
 				Keep official IELTS criterion names in English when appropriate, for example Fluency and Coherence,
 				Lexical Resource, Grammatical Range and Accuracy, and Pronunciation.
@@ -141,7 +151,7 @@ public class AiServiceImpl implements AiService {
 				Speaking test content:
 				%s
 				"""
-				.formatted(speakingTestContent);
+				.formatted(VIETNAMESE_DIACRITICS_REQUIREMENT, speakingTestContent);
 	}
 
 	private String buildOverallPrompt(BigDecimal listeningBand, BigDecimal readingBand, BigDecimal writingBand,
@@ -153,6 +163,7 @@ public class AiServiceImpl implements AiService {
 				Return only JSON matching the schema. Do not return markdown or free text.
 				Feedback must be short, specific, useful, and suitable for an IELTS learner.
 				All feedback explanations must be written in Vietnamese.
+				%s
 				The candidate's IELTS answer/transcript remains in English.
 				Keep official IELTS criterion names in English when appropriate.
 				Do not translate JSON property names.
@@ -169,7 +180,7 @@ public class AiServiceImpl implements AiService {
 				Speaking AI analysis:
 				%s
 				"""
-				.formatted(listeningBand, readingBand, writingBand, speakingBand, safeText(writingAiAnalysis),
+				.formatted(VIETNAMESE_DIACRITICS_REQUIREMENT, listeningBand, readingBand, writingBand, speakingBand, safeText(writingAiAnalysis),
 						safeText(speakingAiAnalysis));
 	}
 

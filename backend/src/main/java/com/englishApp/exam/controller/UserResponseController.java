@@ -58,6 +58,15 @@ public class UserResponseController {
 		return ResponseEntity.ok(new QuestionSubmissionResponse(questionId, true));
 	}
 
+	@PutMapping("/{attemptId}/questions/{questionId}/writing-draft")
+	public ResponseEntity<QuestionSubmissionResponse> saveWritingDraft(@PathVariable Integer attemptId,
+			@PathVariable Integer questionId, @RequestBody WritingRequest request, Authentication authentication) {
+		User currentUser = getCurrentUser(authentication);
+		validateAttemptOwner(this.testAttemptService.findById(attemptId), currentUser);
+		this.userResponseService.saveWritingDraft(attemptId, questionId, request.textContent());
+		return ResponseEntity.ok(new QuestionSubmissionResponse(questionId, true));
+	}
+
 	@PutMapping(value = "/{attemptId}/questions/{questionId}/speaking", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 	public ResponseEntity<SpeakingSubmissionResponse> submitSpeaking(@PathVariable Integer attemptId,
 			@PathVariable Integer questionId, @RequestPart("audioFile") MultipartFile audioFile,

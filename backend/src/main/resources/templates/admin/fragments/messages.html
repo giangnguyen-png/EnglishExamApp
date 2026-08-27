@@ -1,0 +1,10 @@
+<div th:fragment="messages">
+  <div class="alert alert-success alert-dismissible fade show" role="alert" th:if="${successMessage}">
+    <span th:text="${successMessage}">Thành công</span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+  <div class="alert alert-danger alert-dismissible fade show" role="alert" th:if="${errorMessage}">
+    <span th:text="${errorMessage}">Lỗi</span>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+</div>

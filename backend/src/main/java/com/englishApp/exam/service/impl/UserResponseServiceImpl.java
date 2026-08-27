@@ -14,11 +14,13 @@ import org.springframework.web.multipart.MultipartFile;
 import com.englishApp.exam.dto.ai.AiEvaluationResult;
 import com.englishApp.exam.dto.cloudinary.CloudinaryUploadResult;
 import com.englishApp.exam.model.Answer;
+import com.englishApp.exam.model.MockSession;
 import com.englishApp.exam.model.Question;
 import com.englishApp.exam.model.SkillResult;
 import com.englishApp.exam.model.TestAttempt;
 import com.englishApp.exam.model.UserResponse;
 import com.englishApp.exam.model.UserResponseChoice;
+import com.englishApp.exam.model.enums.MockSessionStatus;
 import com.englishApp.exam.model.enums.SkillType;
 import com.englishApp.exam.repository.AnswerRepository;
 import com.englishApp.exam.repository.MockSessionRepository;
@@ -95,11 +97,20 @@ public class UserResponseServiceImpl implements UserResponseService {
 		if (textContent == null || textContent.isBlank()) {
 			throw new RuntimeException("Writing content is required");
 		}
+		return gradeWritingResponse(saveWritingDraft(attemptId, questionId, textContent));
+	}
+
+	@Transactional
+	public UserResponse saveWritingDraft(Integer attemptId, Integer questionId, String textContent) {
 		UserResponse response = getOrCreateResponse(attemptId, questionId);
 		validateSkill(response, SkillType.WRITING);
 		response.setTextContent(textContent);
+		return this.userResponseRepository.save(response);
+	}
+
+	private UserResponse gradeWritingResponse(UserResponse response) {
 		AiEvaluationResult evaluation = this.aiService.evaluateWritingTask(response.getQuestion().getContent(),
-				textContent, determineWritingTaskNumber(response.getQuestion()));
+				response.getTextContent(), determineWritingTaskNumber(response.getQuestion()));
 		BigDecimal normalizedScore = roundToHalfBand(evaluation.score().doubleValue());
 		AiEvaluationResult normalizedEvaluation = new AiEvaluationResult(normalizedScore, evaluation.feedback());
 		response.setAiScore(normalizedScore);
@@ -147,6 +158,7 @@ public class UserResponseServiceImpl implements UserResponseService {
 		if (attempt.getEndTime() != null) {
 			throw new RuntimeException("Test attempt has already been submitted");
 		}
+		validateOpenAttempt(attempt);
 		Question question = this.questionRepository.findById(questionId)
 				.orElseThrow(() -> new RuntimeException("Question not found"));
 		if (!question.getExamSection().getExam().getId().equals(attempt.getExam().getId())) {
@@ -158,6 +170,19 @@ public class UserResponseServiceImpl implements UserResponseService {
 			response.setQuestion(question);
 			return response;
 		});
+	}
+
+	private void validateOpenAttempt(TestAttempt attempt) {
+		MockSession session = attempt.getSession();
+		if (session == null) {
+			return;
+		}
+		if (session.getStatus() != MockSessionStatus.ONGOING) {
+			throw new RuntimeException("Ca thi đã kết thúc.");
+		}
+		if (session.getEndTime() != null && !java.time.LocalDateTime.now().isBefore(session.getEndTime())) {
+			throw new RuntimeException("Ca thi đã kết thúc.");
+		}
 	}
 
 	private byte[] readAudioBytes(MultipartFile audioFile) {

@@ -11,5 +11,7 @@ public interface SessionRegistrationRepository extends JpaRepository<SessionRegi
 
 	List<SessionRegistration> findBySessionId(Integer sessionId);
 
+	long countBySessionId(Integer sessionId);
+
 	boolean existsBySessionIdAndUserId(Integer sessionId, Integer userId);
 }

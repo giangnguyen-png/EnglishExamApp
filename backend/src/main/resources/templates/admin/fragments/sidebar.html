@@ -1,0 +1,13 @@
+<aside class="admin-sidebar p-3" th:fragment="sidebar(active)">
+  <div class="h4 fw-bold text-white mb-4">IELTS Admin</div>
+  <nav class="nav flex-column gap-1">
+    <a class="nav-link" th:classappend="${active == 'dashboard'} ? 'active'" th:href="@{/admin}">Tổng quan</a>
+    <a class="nav-link" th:classappend="${active == 'users'} ? 'active'" th:href="@{/admin/users}">Người dùng</a>
+    <a class="nav-link" th:classappend="${active == 'exams'} ? 'active'" th:href="@{/admin/exams}">Đề thi</a>
+    <a class="nav-link" th:classappend="${active == 'payments'} ? 'active'" th:href="@{/admin/payments}">Thanh toán</a>
+    <a class="nav-link" th:classappend="${active == 'mockSessions'} ? 'active'" th:href="@{/admin/mock-sessions}">Ca thi thử</a>
+  </nav>
+  <form class="mt-4" th:action="@{/admin/logout}" method="post">
+    <button class="btn btn-outline-light w-100" type="submit">Đăng xuất</button>
+  </form>
+</aside>

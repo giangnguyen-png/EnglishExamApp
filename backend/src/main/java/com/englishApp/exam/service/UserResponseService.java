@@ -11,6 +11,8 @@ public interface UserResponseService {
 
 	UserResponse submitWriting(Integer attemptId, Integer questionId, String textContent);
 
+	UserResponse saveWritingDraft(Integer attemptId, Integer questionId, String textContent);
+
 	UserResponse submitSpeaking(Integer attemptId, Integer questionId, MultipartFile audioFile);
 
 	List<UserResponse> findByAttempt(Integer attemptId);

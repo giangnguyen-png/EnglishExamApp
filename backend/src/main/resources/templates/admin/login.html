@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Đăng nhập quản trị</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link th:href="@{/admin/admin.css}" rel="stylesheet">
+</head>
+<body class="login-page">
+  <main class="login-card admin-card p-4">
+    <div class="mb-4">
+      <div class="text-primary fw-bold mb-1">IELTS AI</div>
+      <h1 class="h3 mb-1">Đăng nhập</h1>
+    </div>
+    <div class="alert alert-danger" th:if="${param.error}">Tên đăng nhập, mật khẩu hoặc vai trò không hợp lệ.</div>
+    <div class="alert alert-success" th:if="${param.logout}">Bạn đã đăng xuất.</div>
+    <form th:action="@{/admin/login}" method="post">
+      <div class="mb-3">
+        <label class="form-label" for="username">Tên đăng nhập</label>
+        <input class="form-control" id="username" name="username" autocomplete="username" required autofocus>
+      </div>
+      <div class="mb-4">
+        <label class="form-label" for="password">Mật khẩu</label>
+        <input class="form-control" id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn btn-primary w-100" type="submit">Đăng nhập</button>
+    </form>
+  </main>
+</body>
+</html>

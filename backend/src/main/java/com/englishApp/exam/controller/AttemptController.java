@@ -58,6 +58,7 @@ public class AttemptController {
 		if (attempt.getEndTime() != null) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submitted attempts cannot load active exam content");
 		}
+		this.testAttemptService.validateExamReadyForAttempt(attempt.getExam().getId());
 		return ResponseEntity.ok(ExamDetailResponse.from(attempt.getExam()));
 	}
 
@@ -68,6 +69,16 @@ public class AttemptController {
 		TestAttempt attempt = this.testAttemptService.findById(attemptId);
 		validateAttemptOwner(attempt, currentUser);
 		TestAttempt submittedAttempt = this.testAttemptService.submitAttempt(attemptId);
+		return ResponseEntity.ok(AttemptResultResponse.from(submittedAttempt));
+	}
+
+	@PostMapping("/{attemptId}/force-submit")
+	public ResponseEntity<AttemptResultResponse> forceSubmitAttempt(@PathVariable Integer attemptId,
+			Authentication authentication) {
+		User currentUser = getCurrentUser(authentication);
+		TestAttempt attempt = this.testAttemptService.findById(attemptId);
+		validateAttemptOwner(attempt, currentUser);
+		TestAttempt submittedAttempt = this.testAttemptService.forceSubmitAttempt(attemptId);
 		return ResponseEntity.ok(AttemptResultResponse.from(submittedAttempt));
 	}
 

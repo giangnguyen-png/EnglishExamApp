@@ -11,6 +11,8 @@ public interface MockSessionService {
 
 	void deleteSession(Integer id);
 
+	void deleteSessionByAdmin(Integer id);
+
 	MockSession findById(Integer id);
 
 	List<MockSession> findAll();

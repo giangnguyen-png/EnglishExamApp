@@ -9,6 +9,7 @@ import '../../models/exam.dart';
 import '../../models/result.dart';
 import '../../services/api_service.dart';
 import '../../services/attempt_service.dart';
+import '../../services/mock_session_service.dart';
 import '../../services/response_service.dart';
 import '../result/result_screen.dart';
 
@@ -28,6 +29,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   final _audioRecorder = AudioRecorder();
   final _responseService = ResponseService();
   final _attemptService = AttemptService();
+  final _mockSessionService = MockSessionService();
 
   late final List<Question> _speakingQuestions;
   final Map<int, String> _audioPaths = {};
@@ -37,12 +39,14 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   int? _recordingQuestionId;
   int? _uploadingQuestionId;
   Timer? _questionTimer;
+  Timer? _sessionPollingTimer;
   int _remainingSeconds = 0;
   bool _isPreparing = false;
   bool _isReadingQuestion = false;
   bool _isFinishingTimedQuestion = false;
   String? _uploadError;
   bool _isSubmitting = false;
+  bool _sessionFinished = false;
 
   @override
   void initState() {
@@ -58,11 +62,13 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
         _startQuestionFlow(_speakingQuestions.first);
       }
     });
+    _startSessionPolling();
   }
 
   @override
   void dispose() {
     _questionTimer?.cancel();
+    _sessionPollingTimer?.cancel();
     if (_recordingQuestionId != null) {
       unawaited(_audioRecorder.stop());
     }
@@ -71,7 +77,8 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   }
 
   Future<void> _startRecording(Question question) async {
-    if (_isSubmitting ||
+    if (_sessionFinished ||
+        _isSubmitting ||
         _uploadingQuestionId != null ||
         _recordingQuestionId != null) {
       return;
@@ -163,7 +170,8 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
     bool autoAdvance = false,
     bool allowWhileSubmitting = false,
   }) async {
-    if ((!allowWhileSubmitting && _isSubmitting) ||
+    if (_sessionFinished ||
+        (!allowWhileSubmitting && _isSubmitting) ||
         _uploadingQuestionId != null) {
       return false;
     }
@@ -222,7 +230,8 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   }
 
   Future<void> _confirmSubmit() async {
-    if (_isSubmitting ||
+    if (_sessionFinished ||
+        _isSubmitting ||
         _isReadingQuestion ||
         _isPreparing ||
         _uploadingQuestionId != null ||
@@ -283,7 +292,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   }
 
   Future<void> _submitAttempt() async {
-    if (_isSubmitting) {
+    if (_sessionFinished || _isSubmitting) {
       return;
     }
     _questionTimer?.cancel();
@@ -343,7 +352,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   }
 
   void _previousQuestion() {
-    if (_questionIndex > 0 && !_isSubmitting) {
+    if (_questionIndex > 0 && !_isSubmitting && !_sessionFinished) {
       setState(() {
         _questionIndex--;
       });
@@ -352,7 +361,9 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   }
 
   void _nextQuestion() {
-    if (_questionIndex < _speakingQuestions.length - 1 && !_isSubmitting) {
+    if (_questionIndex < _speakingQuestions.length - 1 &&
+        !_isSubmitting &&
+        !_sessionFinished) {
       setState(() {
         _questionIndex++;
       });
@@ -362,7 +373,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isSubmitting) {
+    if (_isSubmitting || _sessionFinished) {
       return const Scaffold(
         body: Center(
           child: Column(
@@ -405,7 +416,9 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
             const Text('Đề thi chưa có câu hỏi Speaking.'),
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: _isSubmitting || isBusy ? null : _confirmSubmit,
+              onPressed: _isSubmitting || _sessionFinished || isBusy
+                  ? null
+                  : _confirmSubmit,
               child: const Text('Nộp bài'),
             ),
           ],
@@ -429,6 +442,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
     final answerSeconds = _answerSeconds(question);
     final canSubmit =
         !_isSubmitting &&
+        !_sessionFinished &&
         _uploadingQuestionId == null &&
         !_isFinishingTimedQuestion &&
         !_isReadingQuestion &&
@@ -486,7 +500,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
                   const Text('Đang ghi âm...'),
                   const SizedBox(height: 12),
                   FilledButton.icon(
-                    onPressed: _isSubmitting
+                    onPressed: _isSubmitting || _sessionFinished
                         ? null
                         : () {
                             _questionTimer?.cancel();
@@ -497,7 +511,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
                   ),
                 ] else if (_isPreparing) ...[
                   FilledButton.icon(
-                    onPressed: isBusy || _isSubmitting
+                    onPressed: isBusy || _isSubmitting || _sessionFinished
                         ? null
                         : () => _beginAnswerPhase(question, answerSeconds),
                     icon: const Icon(Icons.play_arrow),
@@ -508,7 +522,8 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
                     onPressed: !isBusy &&
                             !_isReadingQuestion &&
                             !_isPreparing &&
-                            !_isSubmitting
+                            !_isSubmitting &&
+                            !_sessionFinished
                         ? () => _startRecording(question)
                         : null,
                     icon: const Icon(Icons.mic),
@@ -534,7 +549,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
-                    onPressed: isUploading || _isSubmitting
+                    onPressed: isUploading || _isSubmitting || _sessionFinished
                         ? null
                         : () => _uploadSpeaking(question),
                     icon: isUploading
@@ -589,6 +604,9 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   }
 
   void _startQuestionFlow(Question question) {
+    if (_sessionFinished) {
+      return;
+    }
     _questionTimer?.cancel();
     _uploadError = null;
     final duration = question.durationSeconds ?? 30;
@@ -664,7 +682,8 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   }
 
   Future<void> _beginAnswerPhase(Question question, int answerSeconds) async {
-    if (_isSubmitting ||
+    if (_sessionFinished ||
+        _isSubmitting ||
         _recordingQuestionId != null ||
         _uploadingQuestionId != null ||
         _uploadedQuestionIds.contains(question.id)) {
@@ -709,7 +728,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   }
 
   Future<void> _finishTimedQuestion(Question question) async {
-    if (_isSubmitting || _isFinishingTimedQuestion) {
+    if (_sessionFinished || _isSubmitting || _isFinishingTimedQuestion) {
       return;
     }
     setState(() {
@@ -804,5 +823,68 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
     final minutes = (safeSeconds ~/ 60).toString().padLeft(2, '0');
     final seconds = (safeSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+
+  void _startSessionPolling() {
+    final sessionId = widget.attempt.sessionId;
+    if (sessionId == null) {
+      return;
+    }
+    _sessionPollingTimer?.cancel();
+    _sessionPollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      unawaited(_checkSessionStatus(sessionId));
+    });
+  }
+
+  Future<void> _checkSessionStatus(int sessionId) async {
+    if (_sessionFinished) {
+      return;
+    }
+    try {
+      final session = await _mockSessionService.getSession(sessionId);
+      if (session.status == 'COMPLETED') {
+        await _handleSessionCompleted();
+      }
+    } catch (_) {
+      // Keep the speaking flow running if a transient polling request fails.
+    }
+  }
+
+  Future<void> _handleSessionCompleted() async {
+    if (_sessionFinished) {
+      return;
+    }
+    if (_uploadingQuestionId != null) {
+      return;
+    }
+    setState(() {
+      _sessionFinished = true;
+      _isSubmitting = true;
+      _isPreparing = false;
+      _isReadingQuestion = false;
+    });
+    _sessionPollingTimer?.cancel();
+    _questionTimer?.cancel();
+    if (_recordingQuestionId != null) {
+      await _audioRecorder.stop();
+      _recordingQuestionId = null;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Ca thi đã kết thúc. Hệ thống đang chấm phần bài bạn đã hoàn thành.',
+        ),
+      ),
+    );
+    final AttemptResult result = await _attemptService.forceSubmitAttempt(
+      widget.attempt.attemptId,
+    );
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => ResultScreen(result: result)),
+      (route) => route.isFirst,
+    );
   }
 }

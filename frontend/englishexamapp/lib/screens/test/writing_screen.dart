@@ -5,8 +5,12 @@ import 'package:flutter/material.dart';
 import '../../config/ielts_time.dart';
 import '../../models/attempt.dart';
 import '../../models/exam.dart';
+import '../../models/result.dart';
 import '../../services/api_service.dart';
+import '../../services/attempt_service.dart';
+import '../../services/mock_session_service.dart';
 import '../../services/response_service.dart';
+import '../result/result_screen.dart';
 import 'speaking_screen.dart';
 
 class WritingScreen extends StatefulWidget {
@@ -21,12 +25,18 @@ class WritingScreen extends StatefulWidget {
 
 class _WritingScreenState extends State<WritingScreen> {
   final _responseService = ResponseService();
+  final _attemptService = AttemptService();
+  final _mockSessionService = MockSessionService();
   final Map<int, TextEditingController> _controllers = {};
+  final Map<int, Timer> _autosaveTimers = {};
+  final Set<int> _draftSavingQuestionIds = {};
 
   late final List<Question> _writingQuestions;
   Timer? _timer;
+  Timer? _sessionPollingTimer;
   Duration _remainingTime = IeltsTime.writing;
   bool _isSaving = false;
+  bool _sessionFinished = false;
 
   @override
   void initState() {
@@ -42,11 +52,16 @@ class _WritingScreenState extends State<WritingScreen> {
       _controllers[question.id] = TextEditingController();
     }
     _startTimer();
+    _startSessionPolling();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _sessionPollingTimer?.cancel();
+    for (final timer in _autosaveTimers.values) {
+      timer.cancel();
+    }
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -75,6 +90,7 @@ class _WritingScreenState extends State<WritingScreen> {
     });
 
     try {
+      await _saveAllWritingDrafts();
       for (final question in _writingQuestions) {
         final text = _controllers[question.id]!.text.trim();
         if (text.isNotEmpty) {
@@ -110,6 +126,9 @@ class _WritingScreenState extends State<WritingScreen> {
   }
 
   void _skipToSpeaking() {
+    if (_sessionFinished) {
+      return;
+    }
     _timer?.cancel();
     Navigator.push(
       context,
@@ -142,7 +161,7 @@ class _WritingScreenState extends State<WritingScreen> {
                     const Text('Đề thi chưa có câu hỏi Writing.'),
                     const SizedBox(height: 16),
                     FilledButton(
-                      onPressed: _skipToSpeaking,
+                      onPressed: _sessionFinished ? null : _skipToSpeaking,
                       child: const Text('Tiếp tục Speaking'),
                     ),
                   ],
@@ -162,7 +181,9 @@ class _WritingScreenState extends State<WritingScreen> {
                 ..._writingQuestions.map(_buildWritingTask),
                 const SizedBox(height: 12),
                 FilledButton.icon(
-                  onPressed: _isSaving ? null : () => _saveWriting(),
+                  onPressed: _isSaving || _sessionFinished
+                      ? null
+                      : () => _saveWriting(),
                   icon: _isSaving
                       ? const SizedBox(
                           width: 18,
@@ -207,13 +228,17 @@ class _WritingScreenState extends State<WritingScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: controller,
+              enabled: !_sessionFinished,
               maxLines: null,
               minLines: 8,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: 'Nhập bài viết của bạn...',
               ),
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) {
+                _scheduleWritingAutosave(question);
+                setState(() {});
+              },
             ),
             const SizedBox(height: 8),
             Align(
@@ -287,6 +312,109 @@ class _WritingScreenState extends State<WritingScreen> {
         _remainingTime -= const Duration(seconds: 1);
       });
     });
+  }
+
+  void _scheduleWritingAutosave(Question question) {
+    if (_sessionFinished) {
+      return;
+    }
+    _autosaveTimers[question.id]?.cancel();
+    _autosaveTimers[question.id] = Timer(const Duration(seconds: 3), () {
+      unawaited(_saveWritingDraft(question));
+    });
+  }
+
+  Future<void> _saveWritingDraft(Question question) async {
+    if (!mounted || _sessionFinished || _draftSavingQuestionIds.contains(question.id)) {
+      return;
+    }
+    setState(() {
+      _draftSavingQuestionIds.add(question.id);
+    });
+    try {
+      await _responseService.saveWritingDraft(
+        widget.attempt.attemptId,
+        question.id,
+        _controllers[question.id]!.text,
+      );
+    } catch (_) {
+      // Draft failures are surfaced when the user explicitly saves or submits.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _draftSavingQuestionIds.remove(question.id);
+        });
+      }
+    }
+  }
+
+  Future<void> _saveAllWritingDrafts() async {
+    for (final timer in _autosaveTimers.values) {
+      timer.cancel();
+    }
+    _autosaveTimers.clear();
+    for (final question in _writingQuestions) {
+      await _responseService.saveWritingDraft(
+        widget.attempt.attemptId,
+        question.id,
+        _controllers[question.id]!.text,
+      );
+    }
+  }
+
+  void _startSessionPolling() {
+    final sessionId = widget.attempt.sessionId;
+    if (sessionId == null) {
+      return;
+    }
+    _sessionPollingTimer?.cancel();
+    _sessionPollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      unawaited(_checkSessionStatus(sessionId));
+    });
+  }
+
+  Future<void> _checkSessionStatus(int sessionId) async {
+    if (_sessionFinished) {
+      return;
+    }
+    try {
+      final session = await _mockSessionService.getSession(sessionId);
+      if (session.status == 'COMPLETED') {
+        await _handleSessionCompleted();
+      }
+    } catch (_) {
+      // Keep editing if a transient polling request fails.
+    }
+  }
+
+  Future<void> _handleSessionCompleted() async {
+    if (_sessionFinished) {
+      return;
+    }
+    setState(() {
+      _sessionFinished = true;
+      _isSaving = true;
+    });
+    _sessionPollingTimer?.cancel();
+    _timer?.cancel();
+    await _saveAllWritingDrafts();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Ca thi đã kết thúc. Hệ thống đang chấm phần bài bạn đã hoàn thành.',
+        ),
+      ),
+    );
+    final AttemptResult result = await _attemptService.forceSubmitAttempt(
+      widget.attempt.attemptId,
+    );
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => ResultScreen(result: result)),
+      (route) => route.isFirst,
+    );
   }
 
   String _formatDuration(Duration duration) {

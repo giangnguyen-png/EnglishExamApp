@@ -25,6 +25,17 @@ class ResponseService {
     );
   }
 
+  Future<void> saveWritingDraft(
+    int attemptId,
+    int questionId,
+    String textContent,
+  ) async {
+    await ApiService.dio.put(
+      '/api/attempts/$attemptId/questions/$questionId/writing-draft',
+      data: {'textContent': textContent},
+    );
+  }
+
   Future<void> submitSpeaking(
     int attemptId,
     int questionId,

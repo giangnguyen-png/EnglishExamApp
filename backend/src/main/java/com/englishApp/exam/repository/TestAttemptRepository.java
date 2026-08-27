@@ -13,6 +13,10 @@ public interface TestAttemptRepository extends JpaRepository<TestAttempt, Intege
 
 	List<TestAttempt> findBySessionId(Integer sessionId);
 
+	List<TestAttempt> findBySessionIdAndEndTimeIsNull(Integer sessionId);
+
+	long countBySessionId(Integer sessionId);
+
 	List<TestAttempt> findByUserIdOrderByCreatedAtDesc(Integer userId);
 
 	List<TestAttempt> findByUserIdAndEndTimeIsNotNullOrderByEndTimeDesc(Integer userId);

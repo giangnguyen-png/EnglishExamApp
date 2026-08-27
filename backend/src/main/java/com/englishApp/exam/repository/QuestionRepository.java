@@ -10,6 +10,8 @@ import com.englishApp.exam.model.enums.SkillType;
 public interface QuestionRepository extends JpaRepository<Question, Integer> {
 	List<Question> findByExamSectionIdOrderByOrderIndex(Integer id);
 
+	List<Question> findByExamSectionExamId(Integer examId);
+
 	long countByExamSectionId(Integer id);
 
 	long countByExamSectionExamIdAndExamSectionSkillType(Integer examId, SkillType skillType);

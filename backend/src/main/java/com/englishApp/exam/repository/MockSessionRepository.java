@@ -16,4 +16,6 @@ public interface MockSessionRepository extends JpaRepository<MockSession, Intege
 	List<MockSession> findByStatus(MockSessionStatus status);
 
 	List<MockSession> findByExpertId(Integer id);
+
+	boolean existsByExpertId(Integer id);
 }

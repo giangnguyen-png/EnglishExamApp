@@ -13,5 +13,9 @@ public interface UserService {
 
 	User updateProfile(Integer userId, User updatedUser);
 
+	User updateUserByAdmin(Integer targetUserId, User updatedUser, Integer roleId, Integer currentAdminId);
+
+	void deleteUserByAdmin(Integer targetUserId, Integer currentAdminId);
+
 	void changePassword(Integer userId, String oldPassword, String newPassword);
 }

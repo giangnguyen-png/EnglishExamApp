@@ -42,4 +42,9 @@ class MockSessionService {
     );
     return Attempt.fromJson(response.data as Map<String, dynamic>);
   }
+
+  Future<MockSession> getSession(int sessionId) async {
+    final response = await ApiService.dio.get('/api/mock-sessions/$sessionId');
+    return MockSession.fromJson(response.data as Map<String, dynamic>);
+  }
 }
