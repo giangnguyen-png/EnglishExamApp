@@ -128,7 +128,14 @@ public class UserResponseServiceImpl implements UserResponseService {
 		validateSkill(response, SkillType.SPEAKING);
 		byte[] audioData = readAudioBytes(audioFile);
 		CloudinaryUploadResult uploadResult = this.cloudinaryService.uploadAudio(audioFile);
-		String transcript = this.speechService.speechToText(audioData);
+		String transcript = null;
+		try {
+			transcript = this.speechService.speechToText(audioData);
+		} catch (RuntimeException error) {
+			if (response.getAttempt().getSession() == null) {
+				throw error;
+			}
+		}
 		response.setFileUrl(uploadResult.secureUrl());
 		response.setFilePublicId(uploadResult.publicId());
 		response.setSpeechToTextTrans(transcript);
@@ -153,7 +160,7 @@ public class UserResponseServiceImpl implements UserResponseService {
 	}
 
 	private UserResponse getOrCreateResponse(Integer attemptId, Integer questionId) {
-		TestAttempt attempt = this.testAttemptRepository.findById(attemptId)
+		TestAttempt attempt = this.testAttemptRepository.findByIdForUpdate(attemptId)
 				.orElseThrow(() -> new RuntimeException("Test attempt not found"));
 		if (attempt.getEndTime() != null) {
 			throw new RuntimeException("Test attempt has already been submitted");

@@ -48,6 +48,10 @@ class ResponseService {
     await ApiService.dio.put(
       '/api/attempts/$attemptId/questions/$questionId/speaking',
       data: formData,
+      options: Options(
+        sendTimeout: const Duration(seconds: 180),
+        receiveTimeout: const Duration(seconds: 180),
+      ),
     );
   }
 }

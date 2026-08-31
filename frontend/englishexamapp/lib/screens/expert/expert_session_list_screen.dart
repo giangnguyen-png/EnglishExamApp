@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../config/app_colors.dart';
 import '../../models/mock_session.dart';
 import '../../services/api_service.dart';
 import '../../services/expert_service.dart';
 import '../../widgets/state_views.dart';
+import '../../widgets/accent_card.dart';
 import 'expert_session_detail_screen.dart';
 import 'session_form_screen.dart';
 
@@ -104,8 +106,11 @@ class _ExpertSessionListScreenState extends State<ExpertSessionListScreen> {
         separatorBuilder: (context, index) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final session = _sessions[index];
-          return Card(
+          return AccentCard(
+            color: AppColors.expert,
             child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event, color: AppColors.expert),
               title: Text(session.roomCode),
               subtitle: Text(
                 '${session.examTitle}\n'

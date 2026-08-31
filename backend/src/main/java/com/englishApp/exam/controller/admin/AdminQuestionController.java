@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import com.englishApp.exam.dto.admin.AdminQuestionForm;
+import com.englishApp.exam.model.Answer;
 import com.englishApp.exam.model.ExamSection;
 import com.englishApp.exam.model.Question;
 import com.englishApp.exam.model.enums.QuestionType;
@@ -82,10 +83,14 @@ public class AdminQuestionController {
 	public String detail(@PathVariable Integer id, Model model, RedirectAttributes redirectAttributes) {
 		return this.questionRepository.findById(id).map(question -> {
 			boolean canUseAnswers = QuestionAnswerRules.usesChoiceAnswers(question.getQuestionType());
+			var answers = this.answerRepository.findByQuestionId(id).stream()
+					.sorted(Comparator.comparing(answer -> answer.getId())).toList();
+			long correctAnswerCount = answers.stream().filter(Answer::isCorrect).count();
 			model.addAttribute("question", question);
 			model.addAttribute("canUseAnswers", canUseAnswers);
-			model.addAttribute("answers", this.answerRepository.findByQuestionId(id).stream()
-					.sorted(Comparator.comparing(answer -> answer.getId())).toList());
+			model.addAttribute("answers", answers);
+			model.addAttribute("missingCorrectAnswerWarning",
+					canUseAnswers && !answers.isEmpty() && correctAnswerCount == 0);
 			return "admin/questions/detail";
 		}).orElseGet(() -> {
 			redirectAttributes.addFlashAttribute("errorMessage", "Không tìm thấy câu hỏi.");
@@ -171,9 +176,13 @@ public class AdminQuestionController {
 	}
 
 	private void validateQuestionTypeChange(Question question, QuestionType nextType) {
-		if (QuestionAnswerRules.doesNotUseChoiceAnswers(nextType)
-				&& !this.answerRepository.findByQuestionId(question.getId()).isEmpty()) {
+		var answers = this.answerRepository.findByQuestionId(question.getId());
+		if (QuestionAnswerRules.doesNotUseChoiceAnswers(nextType) && !answers.isEmpty()) {
 			throw new RuntimeException("Loại câu hỏi này không sử dụng đáp án lựa chọn.");
+		}
+		long correctCount = answers.stream().filter(Answer::isCorrect).count();
+		if (QuestionAnswerRules.isSingleCorrectChoice(nextType) && correctCount > 1) {
+			throw new RuntimeException("Loại câu hỏi này chỉ được có một đáp án đúng.");
 		}
 	}
 }

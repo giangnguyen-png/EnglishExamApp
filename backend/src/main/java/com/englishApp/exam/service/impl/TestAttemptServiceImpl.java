@@ -4,24 +4,35 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import com.englishApp.exam.dto.attempt.AttemptReviewResponse;
+import com.englishApp.exam.dto.attempt.AttemptReviewResponse.AnswerReviewResponse;
+import com.englishApp.exam.dto.attempt.AttemptReviewResponse.QuestionReviewResponse;
+import com.englishApp.exam.dto.attempt.AttemptReviewResponse.SectionReviewResponse;
+import com.englishApp.exam.dto.attempt.FreeQuotaResponse;
 import com.englishApp.exam.dto.ai.AiFeedback;
 import com.englishApp.exam.dto.ai.AiEvaluationResult;
 import com.englishApp.exam.model.Answer;
 import com.englishApp.exam.model.Exam;
+import com.englishApp.exam.model.ExamSection;
 import com.englishApp.exam.model.MockSession;
 import com.englishApp.exam.model.Question;
 import com.englishApp.exam.model.SkillResult;
 import com.englishApp.exam.model.TestAttempt;
 import com.englishApp.exam.model.User;
 import com.englishApp.exam.model.UserResponse;
+import com.englishApp.exam.model.UserResponseChoice;
 import com.englishApp.exam.model.enums.MockSessionStatus;
 import com.englishApp.exam.model.enums.SkillType;
 import com.englishApp.exam.repository.ExamRepository;
@@ -34,6 +45,7 @@ import com.englishApp.exam.repository.TestAttemptRepository;
 import com.englishApp.exam.repository.UserRepository;
 import com.englishApp.exam.repository.UserResponseRepository;
 import com.englishApp.exam.service.AiService;
+import com.englishApp.exam.service.PaymentService;
 import com.englishApp.exam.service.QuestionAnswerRules;
 import com.englishApp.exam.service.ScoringService;
 import com.englishApp.exam.service.TestAttemptService;
@@ -43,6 +55,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class TestAttemptServiceImpl implements TestAttemptService {
+	private static final int FREE_NORMAL_ATTEMPT_LIMIT = 5;
+	private static final String FREE_QUOTA_EXCEEDED_MESSAGE =
+			"Bạn đã sử dụng hết 5 lượt luyện tập miễn phí. Vui lòng nâng cấp Premium để tiếp tục.";
+
 	private final TestAttemptRepository testAttemptRepository;
 	private final UserRepository userRepository;
 	private final ExamRepository examRepository;
@@ -54,6 +70,7 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 	private final SkillResultRepository skillResultRepository;
 	private final AiService aiService;
 	private final ScoringService scoringService;
+	private final PaymentService paymentService;
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	public TestAttemptServiceImpl(TestAttemptRepository testAttemptRepository, UserRepository userRepository,
@@ -61,7 +78,7 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 			AnswerRepository answerRepository,
 			SessionRegistrationRepository sessionRegistrationRepository, QuestionRepository questionRepository,
 			UserResponseRepository userResponseRepository, SkillResultRepository skillResultRepository,
-			AiService aiService, ScoringService scoringService) {
+			AiService aiService, ScoringService scoringService, PaymentService paymentService) {
 		this.testAttemptRepository = testAttemptRepository;
 		this.userRepository = userRepository;
 		this.examRepository = examRepository;
@@ -73,6 +90,7 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 		this.skillResultRepository = skillResultRepository;
 		this.aiService = aiService;
 		this.scoringService = scoringService;
+		this.paymentService = paymentService;
 	}
 
 	public TestAttempt startAttempt(Integer userId, Integer examId, Integer sessionId) {
@@ -81,6 +99,9 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 
 		if (exam.isPremiumOnly() && sessionId == null) {
 			throw new RuntimeException("Premium exam must be taken through a mock session");
+		}
+		if (sessionId == null) {
+			validateFreeNormalAttemptQuota(userId);
 		}
 		validateExamReadyForAttempt(examId);
 
@@ -99,7 +120,7 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 
 	@Transactional
 	public TestAttempt submitAttempt(Integer attemptId) {
-		TestAttempt attempt = this.findById(attemptId);
+		TestAttempt attempt = this.findByIdForUpdate(attemptId);
 		if (attempt.getEndTime() != null) {
 			throw new RuntimeException("Test attempt has already been submitted");
 		}
@@ -113,9 +134,27 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 
 	@Transactional
 	public TestAttempt forceSubmitAttempt(Integer attemptId) {
-		TestAttempt attempt = this.findById(attemptId);
+		TestAttempt attempt = this.findByIdForUpdate(attemptId);
 		if (attempt.getEndTime() != null) {
 			return attempt;
+		}
+		finalizeAttempt(attempt, true);
+		return this.testAttemptRepository.save(attempt);
+	}
+
+	@Transactional
+	public TestAttempt forceSubmitExpiredAttempt(Integer attemptId) {
+		TestAttempt attempt = this.findByIdForUpdate(attemptId);
+		if (attempt.getEndTime() != null) {
+			return attempt;
+		}
+		MockSession session = attempt.getSession();
+		if (session == null) {
+			throw new RuntimeException("Chức năng tự động nộp bài chỉ áp dụng cho ca thi thử Premium.");
+		}
+		if (session.getStatus() == MockSessionStatus.ONGOING
+				&& session.getEndTime() != null && LocalDateTime.now().isBefore(session.getEndTime())) {
+			throw new RuntimeException("Ca thi vẫn đang diễn ra.");
 		}
 		finalizeAttempt(attempt, true);
 		return this.testAttemptRepository.save(attempt);
@@ -174,6 +213,11 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 				.orElseThrow(() -> new RuntimeException("Test attempt not found"));
 	}
 
+	private TestAttempt findByIdForUpdate(Integer id) {
+		return this.testAttemptRepository.findByIdForUpdate(id)
+				.orElseThrow(() -> new RuntimeException("Test attempt not found"));
+	}
+
 	public void validateExamReadyForAttempt(Integer examId) {
 		List<Question> questions = this.questionRepository.findByExamSectionExamId(examId);
 		for (Question question : questions) {
@@ -208,6 +252,101 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 
 	public BigDecimal calculateOverallBand(Integer attemptId) {
 		return this.scoringService.calculateOverallBand(attemptId);
+	}
+
+	@Transactional(readOnly = true)
+	public AttemptReviewResponse getAttemptReview(Integer attemptId, Integer userId) {
+		TestAttempt attempt = findById(attemptId);
+		validateReviewAccess(attempt, userId);
+
+		Map<Integer, UserResponse> responseByQuestionId = this.userResponseRepository.findByAttemptId(attemptId)
+				.stream()
+				.collect(Collectors.toMap(response -> response.getQuestion().getId(), Function.identity(),
+						(existing, replacement) -> existing));
+		List<SectionReviewResponse> sections = attempt.getExam().getExamSections().stream()
+				.filter(section -> isReviewableSkill(section.getSkillType()))
+				.sorted(Comparator.comparingInt(ExamSection::getSectionOrder))
+				.map(section -> toSectionReview(section, responseByQuestionId))
+				.toList();
+		if (sections.isEmpty()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+					"Chỉ hỗ trợ xem lại bài Listening hoặc Reading.");
+		}
+
+		return new AttemptReviewResponse(attempt.getId(), attempt.getExam().getTitle(), sections);
+	}
+
+	public FreeQuotaResponse getFreeQuota(Integer userId) {
+		if (!this.userRepository.existsById(userId)) {
+			throw new RuntimeException("User not found");
+		}
+		boolean premium = this.paymentService.hasPremiumAccess(userId);
+		long used = this.testAttemptRepository.countByUserIdAndSessionIsNull(userId);
+		Integer remaining = premium ? null : Math.max(0, FREE_NORMAL_ATTEMPT_LIMIT - Math.toIntExact(used));
+		return new FreeQuotaResponse(premium, FREE_NORMAL_ATTEMPT_LIMIT, used, remaining);
+	}
+
+	private SectionReviewResponse toSectionReview(ExamSection section,
+			Map<Integer, UserResponse> responseByQuestionId) {
+		List<QuestionReviewResponse> questions = section.getQuestions().stream()
+				.sorted(Comparator.comparingInt(Question::getOrderIndex))
+				.map(question -> toQuestionReview(question, responseByQuestionId.get(question.getId())))
+				.toList();
+		return new SectionReviewResponse(section.getId(), section.getSkillType(), section.getSectionOrder(),
+				section.getPassageContent(), section.getMediaUrl(), questions);
+	}
+
+	private QuestionReviewResponse toQuestionReview(Question question, UserResponse response) {
+		List<Answer> answers = question.getAnswers().stream()
+				.sorted(Comparator.comparing(Answer::getId))
+				.toList();
+		Set<Integer> selectedAnswerIds = selectedAnswerIds(response);
+		Set<Integer> correctAnswerIds = answers.stream()
+				.filter(Answer::isCorrect)
+				.map(Answer::getId)
+				.collect(Collectors.toSet());
+		boolean answered = !selectedAnswerIds.isEmpty();
+		boolean correct = answered && !correctAnswerIds.isEmpty() && selectedAnswerIds.equals(correctAnswerIds);
+		List<AnswerReviewResponse> answerResponses = answers.stream()
+				.map(answer -> new AnswerReviewResponse(answer.getId(), answer.getContent(),
+						selectedAnswerIds.contains(answer.getId()), answer.isCorrect(), answer.getExplanation()))
+				.toList();
+		return new QuestionReviewResponse(question.getId(), question.getContent(), question.getQuestionType(),
+				question.getOrderIndex(), question.getImageUrl(), answered, correct, answerResponses);
+	}
+
+	private Set<Integer> selectedAnswerIds(UserResponse response) {
+		if (response == null) {
+			return Set.of();
+		}
+		List<UserResponseChoice> choices = response.getAnswers() == null ? List.of() : response.getAnswers();
+		return choices.stream()
+				.map(UserResponseChoice::getAnswer)
+				.map(Answer::getId)
+				.collect(Collectors.toCollection(HashSet::new));
+	}
+
+	private void validateReviewAccess(TestAttempt attempt, Integer userId) {
+		if (!attempt.getUser().getId().equals(userId)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Attempt does not belong to current user");
+		}
+		if (attempt.getEndTime() == null) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ có thể xem lại bài đã nộp.");
+		}
+	}
+
+	private boolean isReviewableSkill(SkillType skillType) {
+		return skillType == SkillType.LISTENING || skillType == SkillType.READING;
+	}
+
+	private void validateFreeNormalAttemptQuota(Integer userId) {
+		if (this.paymentService.hasPremiumAccess(userId)) {
+			return;
+		}
+		long used = this.testAttemptRepository.countByUserIdAndSessionIsNull(userId);
+		if (used >= FREE_NORMAL_ATTEMPT_LIMIT) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, FREE_QUOTA_EXCEEDED_MESSAGE);
+		}
 	}
 
 	private String buildOverallFeedbackJson(Integer attemptId) {

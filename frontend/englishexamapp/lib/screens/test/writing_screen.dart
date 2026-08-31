@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../config/app_colors.dart';
 import '../../config/ielts_time.dart';
 import '../../models/attempt.dart';
 import '../../models/exam.dart';
@@ -10,6 +11,7 @@ import '../../services/api_service.dart';
 import '../../services/attempt_service.dart';
 import '../../services/mock_session_service.dart';
 import '../../services/response_service.dart';
+import '../../widgets/accent_card.dart';
 import '../result/result_screen.dart';
 import 'speaking_screen.dart';
 
@@ -69,6 +71,9 @@ class _WritingScreenState extends State<WritingScreen> {
   }
 
   Future<void> _saveWriting({bool requireAllAnswers = true}) async {
+    if (_sessionFinished) {
+      return;
+    }
     if (requireAllAnswers) {
       for (final question in _writingQuestions) {
         final text = _controllers[question.id]!.text.trim();
@@ -104,13 +109,18 @@ class _WritingScreenState extends State<WritingScreen> {
 
       if (!mounted) return;
       _timer?.cancel();
-      Navigator.push(
+      _sessionPollingTimer?.cancel();
+      await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) =>
               SpeakingScreen(exam: widget.exam, attempt: widget.attempt),
         ),
       );
+      if (mounted && !_sessionFinished) {
+        _startTimer();
+        _startSessionPolling();
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -125,18 +135,23 @@ class _WritingScreenState extends State<WritingScreen> {
     }
   }
 
-  void _skipToSpeaking() {
+  Future<void> _skipToSpeaking() async {
     if (_sessionFinished) {
       return;
     }
     _timer?.cancel();
-    Navigator.push(
+    _sessionPollingTimer?.cancel();
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) =>
             SpeakingScreen(exam: widget.exam, attempt: widget.attempt),
       ),
     );
+    if (mounted && !_sessionFinished) {
+      _startTimer();
+      _startSessionPolling();
+    }
   }
 
   @override
@@ -173,7 +188,13 @@ class _WritingScreenState extends State<WritingScreen> {
               children: [
                 Text(
                   'Writing',
-                  style: Theme.of(context).textTheme.headlineSmall,
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(
+                        color: AppColors.writing,
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
                 const SizedBox(height: 6),
                 Text('Thời gian còn lại: ${_formatDuration(_remainingTime)}'),
@@ -201,11 +222,10 @@ class _WritingScreenState extends State<WritingScreen> {
   Widget _buildWritingTask(Question question) {
     final controller = _controllers[question.id]!;
 
-    return Card(
+    return AccentCard(
+      color: AppColors.writing,
       margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -213,11 +233,10 @@ class _WritingScreenState extends State<WritingScreen> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(question.content),
-              ),
+            AccentCard(
+              color: AppColors.writing,
+              padding: const EdgeInsets.all(12),
+              child: Text(question.content),
             ),
             _buildQuestionImage(question),
             const SizedBox(height: 12),
@@ -246,7 +265,6 @@ class _WritingScreenState extends State<WritingScreen> {
               child: Chip(label: Text('Số từ: ${_wordCount(controller.text)}')),
             ),
           ],
-        ),
       ),
     );
   }
@@ -349,10 +367,10 @@ class _WritingScreenState extends State<WritingScreen> {
   }
 
   Future<void> _saveAllWritingDrafts() async {
-    for (final timer in _autosaveTimers.values) {
-      timer.cancel();
+    _cancelAutosaveTimers();
+    if (_sessionFinished) {
+      return;
     }
-    _autosaveTimers.clear();
     for (final question in _writingQuestions) {
       await _responseService.saveWritingDraft(
         widget.attempt.attemptId,
@@ -397,7 +415,7 @@ class _WritingScreenState extends State<WritingScreen> {
     });
     _sessionPollingTimer?.cancel();
     _timer?.cancel();
-    await _saveAllWritingDrafts();
+    _cancelAutosaveTimers();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -415,6 +433,13 @@ class _WritingScreenState extends State<WritingScreen> {
       MaterialPageRoute(builder: (_) => ResultScreen(result: result)),
       (route) => route.isFirst,
     );
+  }
+
+  void _cancelAutosaveTimers() {
+    for (final timer in _autosaveTimers.values) {
+      timer.cancel();
+    }
+    _autosaveTimers.clear();
   }
 
   String _formatDuration(Duration duration) {

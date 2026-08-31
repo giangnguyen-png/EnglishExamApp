@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../config/app_colors.dart';
+import '../../models/attempt_review.dart';
 import '../../models/exam.dart';
 import '../../services/api_service.dart';
 import '../../services/attempt_service.dart';
 import '../../services/exam_service.dart';
 import '../../widgets/state_views.dart';
+import '../../widgets/accent_card.dart';
+import '../../widgets/skill_chip.dart';
+import '../premium/premium_intro_screen.dart';
 import '../test/test_screen.dart';
 
 class ExamDetailScreen extends StatefulWidget {
@@ -24,6 +29,7 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
   bool _isStartingAttempt = false;
   String? _errorMessage;
   Exam? _exam;
+  FreeQuota? _quota;
 
   @override
   void initState() {
@@ -39,9 +45,18 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
 
     try {
       final exam = await _examService.getExamDetail(widget.examId);
+      FreeQuota? quota;
+      if (!exam.premiumOnly) {
+        try {
+          quota = await _attemptService.getFreeQuota();
+        } catch (_) {
+          quota = null;
+        }
+      }
       if (!mounted) return;
       setState(() {
         _exam = exam;
+        _quota = quota;
       });
     } catch (error) {
       if (!mounted) return;
@@ -91,14 +106,18 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
         ],
         if (exam.premiumOnly) ...[
           const SizedBox(height: 8),
-          const Chip(label: Text('Premium')),
+          Chip(
+            avatar: const Icon(Icons.workspace_premium, size: 18),
+            label: const Text('Premium'),
+            backgroundColor: AppColors.soft(AppColors.premium),
+            side: BorderSide(color: AppColors.premium.withOpacity(0.32)),
+          ),
         ],
         const SizedBox(height: 20),
         if (exam.premiumOnly)
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
+          const AccentCard(
+            color: AppColors.premium,
+            child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -111,8 +130,72 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
                   SizedBox(height: 8),
                   Text('Hãy đăng ký và tham gia Mock Session để làm đề này.'),
                 ],
-              ),
             ),
+          )
+        else
+          _buildNormalPracticePanel(exam),
+        const SizedBox(height: 20),
+        if (exam.sections.isEmpty)
+          const Text('Đề thi chưa có section.')
+        else
+          ...exam.sections.map(_buildSection),
+      ],
+    );
+  }
+
+  Widget _buildSection(ExamSection section) {
+    return AccentCard(
+      color: AppColors.skill(section.skillType),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SkillChip(skillType: section.skillType),
+            const SizedBox(height: 8),
+            Text(
+              '${section.questionCount} câu hỏi',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ],
+      ),
+    );
+  }
+
+  Widget _buildNormalPracticePanel(Exam exam) {
+    final quota = _quota;
+    final blocked = quota != null && !quota.premium && quota.remaining == 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (quota != null) ...[
+          AccentCard(
+            color: quota.premium ? AppColors.premium : AppColors.primary,
+            child: Row(
+              children: [
+                Icon(
+                  quota.premium
+                      ? Icons.workspace_premium
+                      : Icons.confirmation_number_outlined,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    quota.premium
+                        ? 'Premium • Luyện tập không giới hạn'
+                        : 'Lượt luyện tập miễn phí: ${quota.used}/${quota.limit}',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (blocked)
+          FilledButton.icon(
+            onPressed: _openPremiumIntro,
+            icon: const Icon(Icons.workspace_premium),
+            label: const Text('Nâng cấp Premium'),
           )
         else
           FilledButton.icon(
@@ -126,32 +209,7 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
                 : const Icon(Icons.play_arrow),
             label: const Text('Bắt đầu luyện tập'),
           ),
-        const SizedBox(height: 20),
-        if (exam.sections.isEmpty)
-          const Text('Đề thi chưa có section.')
-        else
-          ...exam.sections.map(_buildSection),
       ],
-    );
-  }
-
-  Widget _buildSection(ExamSection section) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              section.skillType,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 4),
-            Text('${section.questionCount} câu hỏi'),
-          ],
-        ),
-      ),
     );
   }
 
@@ -175,6 +233,7 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(ApiService.getErrorMessage(error))),
       );
+      _loadExamDetail();
     } finally {
       if (mounted) {
         setState(() {
@@ -182,5 +241,12 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
         });
       }
     }
+  }
+
+  void _openPremiumIntro() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PremiumIntroScreen()),
+    );
   }
 }

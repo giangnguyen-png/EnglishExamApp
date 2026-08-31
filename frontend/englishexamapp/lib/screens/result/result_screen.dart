@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../config/app_colors.dart';
 import '../../models/result.dart';
+import '../../widgets/accent_card.dart';
+import '../review/attempt_review_screen.dart';
 
 class ResultScreen extends StatelessWidget {
   final AttemptResult result;
@@ -12,6 +15,10 @@ class ResultScreen extends StatelessWidget {
     const skillOrder = ['LISTENING', 'READING', 'WRITING', 'SPEAKING'];
     final speaking = result.skillByType('SPEAKING');
     final waitingForExpert = speaking != null && speaking.bandScore == null;
+    final canReviewObjective = result.normalAttempt &&
+        result.endTime.isNotEmpty &&
+        (result.skillByType('LISTENING') != null ||
+            result.skillByType('READING') != null);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kết quả')),
@@ -31,32 +38,48 @@ class ResultScreen extends StatelessWidget {
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  const Text('Overall Band'),
-                  const SizedBox(height: 8),
-                  Text(
-                    result.overallBandScore == null
-                        ? 'Chưa có kết quả'
-                        : _formatBand(result.overallBandScore),
-                    style: Theme.of(context).textTheme.displaySmall,
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+          AccentCard(
+            color: AppColors.primary,
+            child: Column(
+              children: [
+                const Text('Overall Band'),
+                const SizedBox(height: 8),
+                Text(
+                  result.overallBandScore == null
+                      ? 'Chưa có kết quả'
+                      : _formatBand(result.overallBandScore),
+                  style: Theme.of(context)
+                      .textTheme
+                      .displaySmall
+                      ?.copyWith(color: AppColors.primary),
+                  textAlign: TextAlign.center,
+                ),
+              ],
               ),
-            ),
           ),
+          if (canReviewObjective) ...[
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AttemptReviewScreen(
+                      attemptId: result.attemptId,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.rate_review_outlined),
+              label: const Text('Xem lại bài làm'),
+            ),
+          ],
           if (waitingForExpert) ...[
             const SizedBox(height: 12),
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
+            const AccentCard(
+              color: AppColors.premium,
+              child: Text(
                   'Speaking đang chờ giám khảo chấm.\nKết quả tổng sẽ được cập nhật sau.',
-                ),
               ),
             ),
           ],
@@ -127,12 +150,14 @@ class _SkillResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    final color = AppColors.skill(skillType);
+    return AccentCard(
+      color: color,
+      child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            Icon(_skillIcon(skillType), color: color),
+            const SizedBox(height: 8),
             Text(
               title,
               style: Theme.of(context).textTheme.titleMedium,
@@ -143,12 +168,14 @@ class _SkillResultCard extends StatelessWidget {
               fit: BoxFit.scaleDown,
               child: Text(
                 _formatSkillBand(skillType, bandScore),
-                style: Theme.of(context).textTheme.headlineSmall,
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineSmall
+                    ?.copyWith(color: color, fontWeight: FontWeight.w700),
                 textAlign: TextAlign.center,
               ),
             ),
           ],
-        ),
       ),
     );
   }
@@ -161,10 +188,9 @@ class _WritingAnalysisCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    return AccentCard(
+      color: AppColors.writing,
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Writing', style: Theme.of(context).textTheme.titleLarge),
@@ -179,7 +205,6 @@ class _WritingAnalysisCard extends StatelessWidget {
               _FeedbackSection(feedback: tasks[index].feedback),
             ],
           ],
-        ),
       ),
     );
   }
@@ -198,10 +223,9 @@ class _FeedbackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    return AccentCard(
+      color: _feedbackColor(title),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title, style: Theme.of(context).textTheme.titleLarge),
@@ -210,7 +234,6 @@ class _FeedbackCard extends StatelessWidget {
                 ? Text(emptyMessage)
                 : _FeedbackSection(feedback: feedback),
           ],
-        ),
       ),
     );
   }
@@ -229,16 +252,19 @@ class _FeedbackSection extends StatelessWidget {
         _FeedbackList(
           icon: Icons.check_circle_outline,
           title: 'Điểm mạnh',
+          color: AppColors.success,
           items: feedback.strengths,
         ),
         _FeedbackList(
           icon: Icons.warning_amber,
           title: 'Điểm cần cải thiện',
+          color: AppColors.warning,
           items: feedback.weaknesses,
         ),
         _FeedbackList(
           icon: Icons.trending_up,
           title: 'Đề xuất cải thiện',
+          color: AppColors.primary,
           items: feedback.improvements,
         ),
       ],
@@ -249,11 +275,13 @@ class _FeedbackSection extends StatelessWidget {
 class _FeedbackList extends StatelessWidget {
   final IconData icon;
   final String title;
+  final Color color;
   final List<String> items;
 
   const _FeedbackList({
     required this.icon,
     required this.title,
+    required this.color,
     required this.items,
   });
 
@@ -270,7 +298,7 @@ class _FeedbackList extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 18),
+              Icon(icon, color: color, size: 18),
               const SizedBox(width: 8),
               Text(title, style: Theme.of(context).textTheme.titleMedium),
             ],
@@ -286,6 +314,31 @@ class _FeedbackList extends StatelessWidget {
       ),
     );
   }
+}
+
+IconData _skillIcon(String skillType) {
+  switch (skillType) {
+    case 'LISTENING':
+      return Icons.headphones;
+    case 'READING':
+      return Icons.menu_book;
+    case 'WRITING':
+      return Icons.edit_note;
+    case 'SPEAKING':
+      return Icons.mic;
+    default:
+      return Icons.school;
+  }
+}
+
+Color _feedbackColor(String title) {
+  if (title.startsWith('Speaking')) {
+    return AppColors.speaking;
+  }
+  if (title.contains('tổng quan')) {
+    return AppColors.primary;
+  }
+  return AppColors.primary;
 }
 
 String _formatSkillBand(String skillType, double? value) {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../../config/app_colors.dart';
 import '../../models/attempt.dart';
 import '../../models/exam.dart';
 import '../../models/result.dart';
@@ -11,6 +12,7 @@ import '../../services/api_service.dart';
 import '../../services/attempt_service.dart';
 import '../../services/mock_session_service.dart';
 import '../../services/response_service.dart';
+import '../../widgets/accent_card.dart';
 import '../result/result_screen.dart';
 
 class SpeakingScreen extends StatefulWidget {
@@ -451,18 +453,24 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text('Speaking', style: Theme.of(context).textTheme.headlineSmall),
+        Text(
+          'Speaking',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: AppColors.speaking,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
         const SizedBox(height: 8),
         LinearProgressIndicator(
           value: (_questionIndex + 1) / _speakingQuestions.length,
+          color: AppColors.speaking,
         ),
         const SizedBox(height: 8),
         Text('Câu ${_questionIndex + 1}/${_speakingQuestions.length}'),
         const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
+        AccentCard(
+          color: AppColors.speaking,
+          child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -490,7 +498,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
                     size: 56,
                     color: isRecording
                         ? Theme.of(context).colorScheme.error
-                        : Theme.of(context).colorScheme.primary,
+                        : AppColors.speaking,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -563,7 +571,6 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
                   ),
                 ],
               ],
-            ),
           ),
         ),
         const SizedBox(height: 16),

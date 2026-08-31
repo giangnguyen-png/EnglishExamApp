@@ -15,9 +15,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Integer> {
 
 	List<Payment> findByStatus(PaymentStatus status);
 
-	boolean existsByUserIdAndStatus(Integer userId, PaymentStatus status);
-
-	Optional<Payment> findFirstByUserIdAndStatus(Integer userId, PaymentStatus status);
+	List<Payment> findByUserIdAndStatus(Integer userId, PaymentStatus status);
 }
 
 

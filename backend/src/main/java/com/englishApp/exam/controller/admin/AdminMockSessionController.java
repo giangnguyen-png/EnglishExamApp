@@ -1,6 +1,7 @@
 package com.englishApp.exam.controller.admin;
 
-import org.springframework.data.domain.Sort;
+import java.util.Comparator;
+
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -8,22 +9,22 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-import com.englishApp.exam.repository.MockSessionRepository;
+import com.englishApp.exam.model.MockSession;
 import com.englishApp.exam.service.MockSessionService;
 
 @Controller
 public class AdminMockSessionController {
-	private final MockSessionRepository mockSessionRepository;
 	private final MockSessionService mockSessionService;
 
-	public AdminMockSessionController(MockSessionRepository mockSessionRepository, MockSessionService mockSessionService) {
-		this.mockSessionRepository = mockSessionRepository;
+	public AdminMockSessionController(MockSessionService mockSessionService) {
 		this.mockSessionService = mockSessionService;
 	}
 
 	@GetMapping("/admin/mock-sessions")
 	public String list(Model model) {
-		model.addAttribute("sessions", this.mockSessionRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt")));
+		model.addAttribute("sessions", this.mockSessionService.findAll().stream()
+				.sorted(Comparator.comparing(MockSession::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+				.toList());
 		return "admin/mock-sessions/list";
 	}
 

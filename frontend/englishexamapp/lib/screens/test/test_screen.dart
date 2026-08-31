@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../config/app_colors.dart';
 import '../../config/ielts_time.dart';
 import '../../models/attempt.dart';
 import '../../models/exam.dart';
@@ -11,6 +12,7 @@ import '../../services/api_service.dart';
 import '../../services/attempt_service.dart';
 import '../../services/mock_session_service.dart';
 import '../../services/response_service.dart';
+import '../../widgets/accent_card.dart';
 import '../result/result_screen.dart';
 import 'writing_screen.dart';
 
@@ -174,7 +176,8 @@ class _TestScreenState extends State<TestScreen> {
       _stopAudioIfLeavingListening(currentSection, nextSection);
       setState(() {
         _sectionIndex--;
-        _questionIndex = _practiceSections[_sectionIndex].questions.length - 1;
+        _questionIndex =
+            _sortedQuestions(_practiceSections[_sectionIndex]).length - 1;
       });
       _syncSkillTimer();
     }
@@ -182,7 +185,7 @@ class _TestScreenState extends State<TestScreen> {
 
   void _nextQuestion() {
     final section = _practiceSections[_sectionIndex];
-    if (_questionIndex < section.questions.length - 1) {
+    if (_questionIndex < _sortedQuestions(section).length - 1) {
       setState(() {
         _questionIndex++;
       });
@@ -204,20 +207,75 @@ class _TestScreenState extends State<TestScreen> {
     _openWriting();
   }
 
+  void _jumpToQuestion(_QuestionNavItem item) {
+    if (_sessionFinished) {
+      return;
+    }
+    final currentSection = _practiceSections[_sectionIndex];
+    final nextSection = _practiceSections[item.sectionIndex];
+    _stopAudioIfLeavingListening(currentSection, nextSection);
+    setState(() {
+      _sectionIndex = item.sectionIndex;
+      _questionIndex = item.questionIndex;
+    });
+    _syncSkillTimer();
+  }
+
+  void _openQuestionNavigator() {
+    if (_sessionFinished) {
+      return;
+    }
+
+    final section = _practiceSections[_sectionIndex];
+    final navigatorItems = _navigatorItemsForSectionSkill(section);
+    if (navigatorItems.isEmpty) {
+      return;
+    }
+    final answeredCount = _answeredCount(navigatorItems);
+    final currentNumber = _currentQuestionNumber(navigatorItems);
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return _QuestionNavigatorSheet(
+          items: navigatorItems,
+          currentSectionIndex: _sectionIndex,
+          currentQuestionIndex: _questionIndex,
+          answeredQuestionIds: _answeredQuestionIds,
+          answeredCount: answeredCount,
+          totalCount: navigatorItems.length,
+          currentNumber: currentNumber,
+          accentColor: AppColors.skill(section.skillType),
+          onSelected: (item) {
+            Navigator.pop(sheetContext);
+            _jumpToQuestion(item);
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _openWriting() async {
     if (_sessionFinished) {
       return;
     }
     _skillTimer?.cancel();
+    _sessionPollingTimer?.cancel();
     await _stopListeningAudio();
     if (!mounted) return;
-    Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) =>
             WritingScreen(exam: widget.exam, attempt: widget.attempt),
       ),
     );
+    if (mounted && !_sessionFinished) {
+      _syncSkillTimer();
+      _startSessionPolling();
+    }
   }
 
   @override
@@ -245,19 +303,19 @@ class _TestScreenState extends State<TestScreen> {
     }
 
     final section = _practiceSections[_sectionIndex];
-    final questions = section.questions
-      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    final skillColor = AppColors.skill(section.skillType);
+    final questions = _sortedQuestions(section);
     final question = questions[_questionIndex];
-    final totalQuestions = _practiceSections.fold<int>(
-      0,
-      (total, item) => total + item.questions.length,
-    );
-    final doneBefore = _practiceSections
-        .take(_sectionIndex)
-        .fold<int>(0, (total, item) => total + item.questions.length);
-    final currentNumber = doneBefore + _questionIndex + 1;
+    final navigatorItems = _navigatorItemsForSectionSkill(section);
+    final totalQuestions = navigatorItems.length;
+    final answeredCount = _answeredCount(navigatorItems);
+    final currentNumber = _currentQuestionNumber(navigatorItems);
     final progress = totalQuestions == 0 ? 0.0 : currentNumber / totalQuestions;
     final isSavingCurrentQuestion = _savingQuestionIds.contains(question.id);
+    final isFirstPracticeQuestion = _sectionIndex == 0 && _questionIndex == 0;
+    final isLastPracticeQuestion =
+        _sectionIndex == _practiceSections.length - 1 &&
+        _questionIndex == questions.length - 1;
 
     return Scaffold(
       appBar: AppBar(
@@ -279,12 +337,24 @@ class _TestScreenState extends State<TestScreen> {
           const SizedBox(height: 6),
           Text(
             _skillLabel(section.skillType),
-            style: Theme.of(context).textTheme.headlineSmall,
+            style: Theme.of(context)
+                .textTheme
+                .headlineSmall
+                ?.copyWith(color: skillColor, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          LinearProgressIndicator(value: progress),
+          LinearProgressIndicator(value: progress, color: skillColor),
           const SizedBox(height: 8),
-          Text('Câu $currentNumber/$totalQuestions'),
+          if (navigatorItems.isEmpty)
+            Text('Câu ${_questionIndex + 1}')
+          else
+            _QuestionNavigatorBar(
+              currentNumber: currentNumber,
+              answeredCount: answeredCount,
+              totalCount: totalQuestions,
+              accentColor: skillColor,
+              onPressed: _openQuestionNavigator,
+            ),
           const SizedBox(height: 4),
           Text('Thời gian còn lại: ${_formatDuration(_remainingTime)}'),
           if (section.skillType == 'LISTENING' &&
@@ -294,52 +364,48 @@ class _TestScreenState extends State<TestScreen> {
           ],
           if (section.passageContent.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      section.skillType == 'READING'
-                          ? 'Reading Passage'
-                          : 'Nội dung bài thi',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(section.passageContent),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+            AccentCard(
+              color: AppColors.skill(section.skillType),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Question ${question.orderIndex}',
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    question.content,
+                    section.skillType == 'READING'
+                        ? 'Reading Passage'
+                        : 'Nội dung bài thi',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  _buildQuestionImage(question),
-                  const SizedBox(height: 12),
-                  ..._buildAnswerOptions(question),
-                  if (_savingQuestionIds.contains(question.id)) ...[
-                    const SizedBox(height: 8),
-                    const LinearProgressIndicator(),
-                    const SizedBox(height: 4),
-                    const Text('Đang lưu câu trả lời...'),
-                  ],
+                  const SizedBox(height: 8),
+                  Text(section.passageContent),
                 ],
               ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          AccentCard(
+            color: skillColor,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Question ${question.orderIndex}',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  question.content,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                _buildQuestionImage(question),
+                const SizedBox(height: 12),
+                ..._buildAnswerOptions(question),
+                if (_savingQuestionIds.contains(question.id)) ...[
+                  const SizedBox(height: 8),
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 4),
+                  const Text('Đang lưu câu trả lời...'),
+                ],
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -348,7 +414,7 @@ class _TestScreenState extends State<TestScreen> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: _sessionFinished ||
-                          currentNumber == 1 ||
+                          isFirstPracticeQuestion ||
                           isSavingCurrentQuestion
                       ? null
                       : _previousQuestion,
@@ -362,7 +428,7 @@ class _TestScreenState extends State<TestScreen> {
                       ? null
                       : _nextQuestion,
                   child: Text(
-                    currentNumber == totalQuestions ? 'Tiếp tục' : 'Sau',
+                    isLastPracticeQuestion ? 'Tiếp tục' : 'Sau',
                   ),
                 ),
               ),
@@ -382,49 +448,47 @@ class _TestScreenState extends State<TestScreen> {
     final hasNoPlayLeft =
         playCount >= widget.listeningMaxPlays && !isPlaying && !isPaused;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.headphones),
-                const SizedBox(width: 8),
-                Text(
-                  'Bài nghe',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('Lượt nghe: $playCount / ${widget.listeningMaxPlays}'),
-            const SizedBox(height: 4),
-            Text(_listeningHint(playCount, isPlaying, isPaused)),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _sessionFinished || _isAudioLoading || hasNoPlayLeft
-                  ? null
-                  : () => _handleListeningAudioButton(section),
-              icon: _isAudioLoading && isActiveSection
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(_audioButtonIcon(isPlaying, isPaused, hasNoPlayLeft)),
-              label: Text(
-                _audioButtonText(
-                  isPlaying,
-                  isPaused,
-                  isCompleted,
-                  hasNoPlayLeft,
-                ),
+    return AccentCard(
+      color: AppColors.listening,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.headphones),
+              const SizedBox(width: 8),
+              Text(
+                'Bài nghe',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text('Lượt nghe: $playCount / ${widget.listeningMaxPlays}'),
+          const SizedBox(height: 4),
+          Text(_listeningHint(playCount, isPlaying, isPaused)),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _sessionFinished || _isAudioLoading || hasNoPlayLeft
+                ? null
+                : () => _handleListeningAudioButton(section),
+            icon: _isAudioLoading && isActiveSection
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(_audioButtonIcon(isPlaying, isPaused, hasNoPlayLeft)),
+            label: Text(
+              _audioButtonText(
+                isPlaying,
+                isPaused,
+                isCompleted,
+                hasNoPlayLeft,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -649,6 +713,103 @@ class _TestScreenState extends State<TestScreen> {
     );
   }
 
+  List<Question> _sortedQuestions(ExamSection section) {
+    return [...section.questions]
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+  }
+
+  List<_QuestionNavItem> _navigatorItemsForSectionSkill(
+    ExamSection currentSection,
+  ) {
+    final skillItems = _navigatorItemsForSkill(currentSection.skillType);
+    if (skillItems.isNotEmpty) {
+      return skillItems;
+    }
+    return _navigatorItemsForSection(currentSection);
+  }
+
+  List<_QuestionNavItem> _navigatorItemsForSkill(String skillType) {
+    final items = <_QuestionNavItem>[];
+    var number = 1;
+    for (
+      var sectionIndex = 0;
+      sectionIndex < _practiceSections.length;
+      sectionIndex++
+    ) {
+      final section = _practiceSections[sectionIndex];
+      if (section.skillType != skillType) {
+        continue;
+      }
+      final questions = _sortedQuestions(section);
+      for (
+        var questionIndex = 0;
+        questionIndex < questions.length;
+        questionIndex++
+      ) {
+        items.add(
+          _QuestionNavItem(
+            number: number,
+            sectionIndex: sectionIndex,
+            questionIndex: questionIndex,
+            question: questions[questionIndex],
+          ),
+        );
+        number++;
+      }
+    }
+    return items;
+  }
+
+  List<_QuestionNavItem> _navigatorItemsForSection(ExamSection section) {
+    final sectionIndex = _practiceSections.indexWhere(
+      (item) => item.id == section.id,
+    );
+    if (sectionIndex == -1) {
+      return [];
+    }
+    final questions = _sortedQuestions(section);
+    return [
+      for (
+        var questionIndex = 0;
+        questionIndex < questions.length;
+        questionIndex++
+      )
+        _QuestionNavItem(
+          number: questionIndex + 1,
+          sectionIndex: sectionIndex,
+          questionIndex: questionIndex,
+          question: questions[questionIndex],
+        ),
+    ];
+  }
+
+  int _answeredCount(List<_QuestionNavItem> items) {
+    return items.where((item) {
+      return _selectedAnswers[item.question.id]?.isNotEmpty ?? false;
+    }).length;
+  }
+
+  Set<int> get _answeredQuestionIds {
+    return _selectedAnswers.entries
+        .where((entry) => entry.value.isNotEmpty)
+        .map((entry) => entry.key)
+        .toSet();
+  }
+
+  int _currentQuestionNumber(List<_QuestionNavItem> items) {
+    if (items.isEmpty) {
+      return _questionIndex + 1;
+    }
+    return items
+        .firstWhere(
+          (item) =>
+              item.sectionIndex == _sectionIndex &&
+              item.questionIndex == _questionIndex,
+          orElse: () => items.first,
+        )
+        .number;
+  }
+
   void _startSkillTimer(String skillType) {
     _skillTimer?.cancel();
     _activeSkillType = skillType;
@@ -768,5 +929,266 @@ class _TestScreenState extends State<TestScreen> {
       default:
         return skillType;
     }
+  }
+}
+
+class _QuestionNavItem {
+  final int number;
+  final int sectionIndex;
+  final int questionIndex;
+  final Question question;
+
+  const _QuestionNavItem({
+    required this.number,
+    required this.sectionIndex,
+    required this.questionIndex,
+    required this.question,
+  });
+}
+
+class _QuestionNavigatorBar extends StatelessWidget {
+  final int currentNumber;
+  final int answeredCount;
+  final int totalCount;
+  final Color accentColor;
+  final VoidCallback onPressed;
+
+  const _QuestionNavigatorBar({
+    required this.currentNumber,
+    required this.answeredCount,
+    required this.totalCount,
+    required this.accentColor,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AccentCard(
+      color: accentColor,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Câu $currentNumber / $totalCount',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+              Text('$answeredCount/$totalCount đã làm'),
+            ],
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: onPressed,
+            icon: const Icon(Icons.grid_view),
+            label: const Text('Xem câu hỏi'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuestionNavigatorSheet extends StatelessWidget {
+  final List<_QuestionNavItem> items;
+  final int currentSectionIndex;
+  final int currentQuestionIndex;
+  final Set<int> answeredQuestionIds;
+  final int answeredCount;
+  final int totalCount;
+  final int currentNumber;
+  final Color accentColor;
+  final ValueChanged<_QuestionNavItem> onSelected;
+
+  const _QuestionNavigatorSheet({
+    required this.items,
+    required this.currentSectionIndex,
+    required this.currentQuestionIndex,
+    required this.answeredQuestionIds,
+    required this.answeredCount,
+    required this.totalCount,
+    required this.currentNumber,
+    required this.accentColor,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.82,
+        ),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(16, 4, 16, bottomPadding + 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Câu hỏi',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const Spacer(),
+                  Text('$answeredCount/$totalCount đã làm'),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text('Đang xem câu $currentNumber'),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: items.map((item) {
+                  final isCurrent =
+                      item.sectionIndex == currentSectionIndex &&
+                      item.questionIndex == currentQuestionIndex;
+                  final isAnswered =
+                      answeredQuestionIds.contains(item.question.id);
+                  return _QuestionNavButton(
+                    number: item.number,
+                    isCurrent: isCurrent,
+                    isAnswered: isAnswered,
+                    accentColor: accentColor,
+                    onTap: () => onSelected(item),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 16,
+                runSpacing: 8,
+                children: [
+                  _QuestionNavLegend(
+                    color: AppColors.soft(AppColors.success),
+                    borderColor: AppColors.success,
+                    label: 'Đã làm',
+                  ),
+                  _QuestionNavLegend(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderColor: Theme.of(context).colorScheme.outlineVariant,
+                    label: 'Chưa làm',
+                  ),
+                  _QuestionNavLegend(
+                    color: AppColors.soft(accentColor),
+                    borderColor: accentColor,
+                    label: 'Đang xem',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuestionNavLegend extends StatelessWidget {
+  final Color color;
+  final Color borderColor;
+  final String label;
+
+  const _QuestionNavLegend({
+    required this.color,
+    required this.borderColor,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 14,
+          height: 14,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: borderColor),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(label),
+      ],
+    );
+  }
+}
+
+class _QuestionNavButton extends StatelessWidget {
+  final int number;
+  final bool isCurrent;
+  final bool isAnswered;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _QuestionNavButton({
+    required this.number,
+    required this.isCurrent,
+    required this.isAnswered,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = isCurrent
+        ? accentColor
+        : isAnswered
+            ? AppColors.success
+            : Theme.of(context).colorScheme.outlineVariant;
+    final backgroundColor = isCurrent
+        ? AppColors.soft(accentColor)
+        : isAnswered
+            ? AppColors.soft(AppColors.success)
+            : Theme.of(context).colorScheme.surface;
+    final textColor = isCurrent
+        ? accentColor
+        : Theme.of(context).colorScheme.onSurface;
+
+    return Material(
+      color: backgroundColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: borderColor,
+          width: isCurrent ? 2 : 1,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: SizedBox(
+          width: 44,
+          height: 40,
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isAnswered && !isCurrent) ...[
+                  Icon(Icons.check, size: 14, color: AppColors.success),
+                  const SizedBox(width: 2),
+                ],
+                Text(
+                  '$number',
+                  style: TextStyle(
+                    color: textColor,
+                    fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

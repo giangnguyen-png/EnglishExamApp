@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'app_colors.dart';
+
 class AppTheme {
   static ThemeData light() {
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF4F5FA8),
+      seedColor: AppColors.primary,
       brightness: Brightness.light,
     );
 

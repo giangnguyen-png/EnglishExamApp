@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../config/app_colors.dart';
 import '../../models/exam.dart';
 import '../../services/api_service.dart';
 import '../../services/exam_service.dart';
 import '../../widgets/state_views.dart';
+import '../../widgets/skill_chip.dart';
 import 'exam_detail_screen.dart';
 
 class ExamListScreen extends StatefulWidget {
@@ -91,7 +93,13 @@ class _ExamListScreenState extends State<ExamListScreen> {
         separatorBuilder: (context, index) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final exam = _exams[index];
+          final accent = exam.premiumOnly ? AppColors.premium : AppColors.primary;
           return Card(
+            color: AppColors.soft(accent),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: accent.withOpacity(0.28)),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -105,7 +113,15 @@ class _ExamListScreenState extends State<ExamListScreen> {
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),
-                      if (exam.premiumOnly) const Chip(label: Text('Premium')),
+                      if (exam.premiumOnly)
+                        Chip(
+                          avatar: const Icon(Icons.workspace_premium, size: 18),
+                          label: const Text('Premium'),
+                          backgroundColor: AppColors.soft(AppColors.premium),
+                          side: BorderSide(
+                            color: AppColors.premium.withOpacity(0.32),
+                          ),
+                        ),
                     ],
                   ),
                   if (exam.description.isNotEmpty) ...[
@@ -117,10 +133,10 @@ class _ExamListScreenState extends State<ExamListScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      Chip(label: Text('Listening')),
-                      Chip(label: Text('Reading')),
-                      Chip(label: Text('Writing')),
-                      Chip(label: Text('Speaking')),
+                      SkillChip(skillType: 'LISTENING'),
+                      SkillChip(skillType: 'READING'),
+                      SkillChip(skillType: 'WRITING'),
+                      SkillChip(skillType: 'SPEAKING'),
                     ],
                   ),
                   const SizedBox(height: 12),

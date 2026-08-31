@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.englishApp.exam.dto.attempt.AttemptHistoryResponse;
+import com.englishApp.exam.dto.attempt.AttemptReviewResponse;
 import com.englishApp.exam.dto.attempt.AttemptResultResponse;
+import com.englishApp.exam.dto.attempt.FreeQuotaResponse;
 import com.englishApp.exam.dto.exam.ExamDetailResponse;
 import com.englishApp.exam.model.TestAttempt;
 import com.englishApp.exam.model.User;
@@ -40,6 +42,12 @@ public class AttemptController {
 		return ResponseEntity.ok(attempts);
 	}
 
+	@GetMapping("/free-quota")
+	public ResponseEntity<FreeQuotaResponse> getFreeQuota(Authentication authentication) {
+		User currentUser = getCurrentUser(authentication);
+		return ResponseEntity.ok(this.testAttemptService.getFreeQuota(currentUser.getId()));
+	}
+
 	@GetMapping("/{attemptId}")
 	public ResponseEntity<AttemptResultResponse> findById(@PathVariable Integer attemptId,
 			Authentication authentication) {
@@ -62,6 +70,13 @@ public class AttemptController {
 		return ResponseEntity.ok(ExamDetailResponse.from(attempt.getExam()));
 	}
 
+	@GetMapping("/{attemptId}/review")
+	public ResponseEntity<AttemptReviewResponse> getAttemptReview(@PathVariable Integer attemptId,
+			Authentication authentication) {
+		User currentUser = getCurrentUser(authentication);
+		return ResponseEntity.ok(this.testAttemptService.getAttemptReview(attemptId, currentUser.getId()));
+	}
+
 	@PostMapping("/{attemptId}/submit")
 	public ResponseEntity<AttemptResultResponse> submitAttempt(@PathVariable Integer attemptId,
 			Authentication authentication) {
@@ -78,7 +93,7 @@ public class AttemptController {
 		User currentUser = getCurrentUser(authentication);
 		TestAttempt attempt = this.testAttemptService.findById(attemptId);
 		validateAttemptOwner(attempt, currentUser);
-		TestAttempt submittedAttempt = this.testAttemptService.forceSubmitAttempt(attemptId);
+		TestAttempt submittedAttempt = this.testAttemptService.forceSubmitExpiredAttempt(attemptId);
 		return ResponseEntity.ok(AttemptResultResponse.from(submittedAttempt));
 	}
 

@@ -34,6 +34,8 @@ public class Answer {
 	private String content;
 	@Column(name = "is_correct")
 	private boolean isCorrect;
+	@Column(columnDefinition = "TEXT")
+	private String explanation;
 
 	@ManyToOne
 	@JoinColumn(name = "question_id", nullable = false)

@@ -50,6 +50,8 @@ public class Payment {
 	@Column(name = "created_at")
 	@CreationTimestamp
 	private LocalDateTime createdAt;
+	@Column(name = "completed_at")
+	private LocalDateTime completedAt;
 	@Column(name = "premium_duration")
 	private Integer premiumDuration;
 

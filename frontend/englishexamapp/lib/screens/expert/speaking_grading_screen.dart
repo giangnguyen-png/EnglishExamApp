@@ -155,13 +155,21 @@ class _SpeakingGradingScreenState extends State<SpeakingGradingScreen> {
             const SizedBox(height: 8),
             const Text('Transcript'),
             Text(
-              response.transcript.isEmpty
-                  ? 'Chưa có transcript'
-                  : response.transcript,
+              _transcriptText(response),
             ),
           ],
         ),
       ),
     );
+  }
+
+  String _transcriptText(SpeakingResponse response) {
+    if (response.transcript.isNotEmpty) {
+      return response.transcript;
+    }
+    if (response.audioUrl.isNotEmpty) {
+      return 'Không thể tạo transcript. Vui lòng nghe audio để chấm.';
+    }
+    return 'Chưa có transcript';
   }
 }

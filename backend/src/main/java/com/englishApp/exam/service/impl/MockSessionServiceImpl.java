@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.englishApp.exam.model.MockSession;
 import com.englishApp.exam.model.enums.MockSessionStatus;
@@ -74,7 +75,7 @@ public class MockSessionServiceImpl implements MockSessionService {
 	}
 
 	public void deleteSession(Integer id) {
-		MockSession session = this.findById(id);
+		MockSession session = this.findRawById(id);
 		if (session.getStatus() != MockSessionStatus.PENDING) {
 			throw new RuntimeException("Chỉ có thể xóa ca thi đang chờ bắt đầu.");
 		}
@@ -85,26 +86,29 @@ public class MockSessionServiceImpl implements MockSessionService {
 	}
 
 	public void deleteSessionByAdmin(Integer id) {
-		MockSession session = this.findById(id);
+		MockSession session = this.findRawById(id);
 		if (hasSessionData(id)) {
 			throw new RuntimeException("Không thể xóa ca thi đã có dữ liệu thí sinh.");
 		}
 		this.mockSessionRepository.delete(session);
 	}
 
+	@Transactional
 	public MockSession findById(Integer id) {
-		return this.mockSessionRepository.findById(id).orElseThrow(() -> new RuntimeException("Session not found"));
+		return this.finishIfExpired(this.findRawById(id));
 	}
 
+	@Transactional
 	public List<MockSession> findAll() {
-		return this.mockSessionRepository.findAll();
+		return this.mockSessionRepository.findAll().stream().map(this::finishIfExpired).toList();
 	}
 
+	@Transactional
 	public List<MockSession> findByExpert(Integer expertId) {
 		if (!this.userRepository.existsById(expertId)) {
 			throw new RuntimeException("Expert not found");
 		}
-		return this.mockSessionRepository.findByExpertId(expertId);
+		return this.mockSessionRepository.findByExpertId(expertId).stream().map(this::finishIfExpired).toList();
 	}
 
 	public List<MockSession> findAvailableSessions() {
@@ -115,7 +119,7 @@ public class MockSessionServiceImpl implements MockSessionService {
 	}
 
 	public MockSession startSession(Integer id) {
-		MockSession session = this.findById(id);
+		MockSession session = this.findRawById(id);
 		if (session.getStatus() != MockSessionStatus.PENDING) {
 			throw new RuntimeException("Only pending sessions can be started");
 		}
@@ -123,8 +127,12 @@ public class MockSessionServiceImpl implements MockSessionService {
 		return this.mockSessionRepository.save(session);
 	}
 
+	@Transactional
 	public MockSession finishSession(Integer id) {
-		MockSession session = this.findById(id);
+		MockSession session = this.findRawById(id);
+		if (session.getStatus() == MockSessionStatus.COMPLETED) {
+			return session;
+		}
 		if (session.getStatus() != MockSessionStatus.ONGOING) {
 			throw new RuntimeException("Only ongoing sessions can be finished");
 		}
@@ -133,6 +141,18 @@ public class MockSessionServiceImpl implements MockSessionService {
 		this.testAttemptRepository.findBySessionIdAndEndTimeIsNull(id)
 				.forEach(attempt -> this.testAttemptService.forceSubmitAttempt(attempt.getId()));
 		return savedSession;
+	}
+
+	private MockSession finishIfExpired(MockSession session) {
+		if (session.getStatus() == MockSessionStatus.ONGOING && session.getEndTime() != null
+				&& !LocalDateTime.now().isBefore(session.getEndTime())) {
+			return this.finishSession(session.getId());
+		}
+		return session;
+	}
+
+	private MockSession findRawById(Integer id) {
+		return this.mockSessionRepository.findById(id).orElseThrow(() -> new RuntimeException("Session not found"));
 	}
 
 	private void validateSession(MockSession session) {

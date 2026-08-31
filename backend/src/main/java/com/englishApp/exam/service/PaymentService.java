@@ -1,22 +1,26 @@
 package com.englishApp.exam.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
+import com.englishApp.exam.dto.payment.CreatePaymentResponse;
 import com.englishApp.exam.model.Payment;
-import com.englishApp.exam.model.enums.PaymentStatus;
 
 public interface PaymentService {
-	Payment createPayment(Payment payment);
+	CreatePaymentResponse createPremiumPayment(Integer userId);
 
 	Payment createFakePremiumPayment(Integer userId);
 
-	Payment updatePaymentStatus(String transactionId, PaymentStatus status);
+	Payment processMomoCallback(Map<String, String> params);
 
-	Payment findByTransactionId(String transactionId);
+	Payment findById(Integer id);
 
 	List<Payment> findByUser(Integer userId);
 
 	boolean hasPremiumAccess(Integer userId);
+
+	LocalDateTime findPremiumExpiresAt(Integer userId);
 
 	void requirePremium(Integer userId);
 }

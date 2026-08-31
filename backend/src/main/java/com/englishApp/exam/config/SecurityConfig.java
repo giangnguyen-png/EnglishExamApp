@@ -67,6 +67,7 @@ public class SecurityConfig {
 				.securityMatcher("/api/**")
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth.requestMatchers("/api/auth/**").permitAll()
+						.requestMatchers("/api/payments/momo-return", "/api/payments/momo-ipn").permitAll()
 						.requestMatchers("/api/expert/**").hasRole("EXPERT").anyRequest().authenticated())
 				.oauth2ResourceServer(
 						oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));

@@ -52,7 +52,7 @@ public class AdminAnswerController {
 			Question question = this.questionRepository.findById(questionId)
 					.orElseThrow(() -> new RuntimeException("Không tìm thấy câu hỏi."));
 			validateAnswerAllowed(question);
-			validateAnswerState(question, null, form.isCorrect(), true);
+			validateAnswerState(question, null, form.isCorrect());
 			Answer answer = new Answer();
 			copyToAnswer(form, answer);
 			answer.setQuestion(question);
@@ -89,7 +89,7 @@ public class AdminAnswerController {
 		return this.answerRepository.findById(id).map(answer -> {
 			try {
 				validateAnswerAllowed(answer.getQuestion());
-				validateAnswerState(answer.getQuestion(), answer.getId(), form.isCorrect(), false);
+				validateAnswerState(answer.getQuestion(), answer.getId(), form.isCorrect());
 				copyToAnswer(form, answer);
 				this.answerRepository.save(answer);
 				redirectAttributes.addFlashAttribute("successMessage", "Cập nhật đáp án thành công.");
@@ -124,12 +124,14 @@ public class AdminAnswerController {
 		AdminAnswerForm form = new AdminAnswerForm();
 		form.setContent(answer.getContent());
 		form.setCorrect(answer.isCorrect());
+		form.setExplanation(answer.getExplanation());
 		return form;
 	}
 
 	private void copyToAnswer(AdminAnswerForm form, Answer answer) {
 		answer.setContent(form.getContent());
 		answer.setCorrect(form.isCorrect());
+		answer.setExplanation(form.getExplanation());
 	}
 
 	private void validateAnswerAllowed(Question question) {
@@ -138,27 +140,15 @@ public class AdminAnswerController {
 		}
 	}
 
-	private void validateAnswerState(Question question, Integer currentAnswerId, boolean submittedCorrect,
-			boolean creating) {
-		long existingCount = this.answerRepository.findByQuestionId(question.getId()).stream()
-				.filter(answer -> currentAnswerId == null || !answer.getId().equals(currentAnswerId))
-				.count();
+	private void validateAnswerState(Question question, Integer currentAnswerId, boolean submittedCorrect) {
 		long correctCount = this.answerRepository.findByQuestionId(question.getId()).stream()
 				.filter(answer -> currentAnswerId == null || !answer.getId().equals(currentAnswerId))
 				.filter(Answer::isCorrect)
 				.count();
-		long nextCorrectCount = correctCount + (submittedCorrect ? 1 : 0);
-		long nextAnswerCount = existingCount + 1;
 
 		if (QuestionAnswerRules.isSingleCorrectChoice(question.getQuestionType()) && submittedCorrect
 				&& correctCount >= 1) {
 			throw new RuntimeException("Câu hỏi này chỉ được có một đáp án đúng.");
-		}
-		if (nextAnswerCount > 1 && nextCorrectCount == 0) {
-			throw new RuntimeException("Câu hỏi đã có đáp án nhưng chưa có đáp án đúng.");
-		}
-		if (!creating && nextAnswerCount >= 1 && nextCorrectCount == 0) {
-			throw new RuntimeException("Câu hỏi đã có đáp án nhưng chưa có đáp án đúng.");
 		}
 	}
 }

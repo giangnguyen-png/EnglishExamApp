@@ -18,7 +18,8 @@ public record AttemptResultResponse(
 		LocalDateTime endTime,
 		BigDecimal overallBandScore,
 		List<SkillResultResponse> skills,
-		String aiOverallFeedback) {
+		String aiOverallFeedback,
+		boolean normalAttempt) {
 	public static AttemptResultResponse from(TestAttempt attempt) {
 		List<SkillResult> skillResults = attempt.getSkillResults() == null ? Collections.emptyList()
 				: attempt.getSkillResults();
@@ -34,7 +35,8 @@ public record AttemptResultResponse(
 				attempt.getEndTime(),
 				attempt.getOverallBandScore(),
 				skills,
-				attempt.getAiOverallFeedback());
+				attempt.getAiOverallFeedback(),
+				attempt.getSession() == null);
 	}
 
 	public record SkillResultResponse(

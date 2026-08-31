@@ -10,6 +10,7 @@ class AttemptResult {
   final List<SkillResult> skills;
   final String aiOverallFeedback;
   final AiFeedback overallFeedback;
+  final bool normalAttempt;
 
   AttemptResult({
     required this.attemptId,
@@ -21,6 +22,7 @@ class AttemptResult {
     required this.skills,
     required this.aiOverallFeedback,
     required this.overallFeedback,
+    required this.normalAttempt,
   });
 
   factory AttemptResult.fromJson(Map<String, dynamic> json) {
@@ -38,6 +40,7 @@ class AttemptResult {
           .toList(),
       aiOverallFeedback: _readAiText(json['aiOverallFeedback']),
       overallFeedback: AiFeedback.fromJsonString(json['aiOverallFeedback']),
+      normalAttempt: (json['normalAttempt'] as bool?) ?? true,
     );
   }
 

@@ -28,6 +28,10 @@
               <input class="form-check-input" id="correct" type="checkbox" th:field="*{correct}">
               <label class="form-check-label" for="correct">Đáp án đúng</label>
             </div>
+            <div class="mb-4">
+              <label class="form-label" for="explanation">Giải thích đáp án</label>
+              <textarea class="form-control" id="explanation" rows="4" th:field="*{explanation}"></textarea>
+            </div>
             <div class="d-flex gap-2">
               <button class="btn btn-primary" type="submit">Lưu</button>
               <a class="btn btn-outline-secondary" th:href="@{/admin/questions/{id}(id=${question.id})}">Hủy</a>

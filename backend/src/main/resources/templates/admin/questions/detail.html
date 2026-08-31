@@ -39,6 +39,9 @@
             <h2 class="h5 mb-0">Đáp án</h2>
             <a class="btn btn-primary" th:if="${canUseAnswers}" th:href="@{/admin/questions/{id}/answers/new(id=${question.id})}">Thêm đáp án</a>
           </div>
+          <div class="alert alert-warning" th:if="${missingCorrectAnswerWarning}">
+            Câu hỏi đã có đáp án nhưng chưa có đáp án đúng.
+          </div>
           <div class="table-responsive">
             <table class="table table-hover align-middle">
               <thead>
