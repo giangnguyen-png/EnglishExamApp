@@ -23,6 +23,7 @@ import com.englishApp.exam.repository.UserResponseRepository;
 
 @SpringBootTest
 @TestPropertySource(properties = {
+		"jwt.secret=test-secret-for-exam-application-tests-32-bytes",
 		"spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
 				+ "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration"
 })

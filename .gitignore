@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+
+/secrets/
+**/secrets/
+*credential*.json
+*credentials*.json
+*service-account*.json
+google-credentials*.json
+google-service-account*.json
+application_default_credentials.json
+
+*.pem
+*.key
+*.p12
+*.jks
