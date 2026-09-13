@@ -15,10 +15,11 @@ class ResultScreen extends StatelessWidget {
     const skillOrder = ['LISTENING', 'READING', 'WRITING', 'SPEAKING'];
     final speaking = result.skillByType('SPEAKING');
     final waitingForExpert = speaking != null && speaking.bandScore == null;
-    final canReviewObjective = result.normalAttempt &&
-        result.endTime.isNotEmpty &&
+    final canReviewAttempt = result.endTime.isNotEmpty &&
         (result.skillByType('LISTENING') != null ||
-            result.skillByType('READING') != null);
+            result.skillByType('READING') != null ||
+            result.skillByType('WRITING') != null ||
+            result.skillByType('SPEAKING') != null);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kết quả')),
@@ -57,7 +58,7 @@ class ResultScreen extends StatelessWidget {
               ],
               ),
           ),
-          if (canReviewObjective) ...[
+          if (canReviewAttempt) ...[
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: () {

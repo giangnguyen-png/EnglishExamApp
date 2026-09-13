@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -329,6 +330,82 @@ class TestAttemptServiceImplTest {
 		assertFalse(review.sections().get(0).questions().get(0).correct());
 	}
 
+	@Test
+	void getAttemptReviewReturnsWritingTextScoreBandAndSavedAnalysis() {
+		ExamSection writing = writingSection();
+		Question task = question(1, QuestionType.ESSAY, writing);
+		writing.setQuestions(List.of(task));
+		TestAttempt attempt = reviewAttempt(20, 7, true, List.of(writing));
+		UserResponse response = response(100, attempt, task, List.of());
+		response.setTextContent("The chart illustrates growth.");
+		response.setAiScore(new BigDecimal("6.0"));
+		SkillResult result = skillResult(attempt, SkillType.WRITING, "6.5",
+				"[{\"feedback\":{\"strengths\":[\"Coherent\"],\"weaknesses\":[\"Grammar\"],\"improvements\":[\"Review tense\"]}}]");
+		when(this.testAttemptRepository.findById(20)).thenReturn(Optional.of(attempt));
+		when(this.userResponseRepository.findByAttemptId(20)).thenReturn(List.of(response));
+		when(this.skillResultRepository.findByAttemptId(20)).thenReturn(List.of(result));
+
+		AttemptReviewResponse review = this.service.getAttemptReview(20, 7);
+
+		assertEquals(SkillType.WRITING, review.sections().get(0).skillType());
+		assertEquals(new BigDecimal("6.5"), review.sections().get(0).bandScore());
+		assertEquals(result.getAiAnalysis(), review.sections().get(0).aiAnalysis());
+		assertEquals("The chart illustrates growth.", review.sections().get(0).questions().get(0).textResponse());
+		assertEquals(new BigDecimal("6.0"), review.sections().get(0).questions().get(0).aiScore());
+		assertTrue(review.sections().get(0).questions().get(0).answered());
+		verify(this.aiService, never()).evaluateWritingTask(any(), any(), anyInt());
+	}
+
+	@Test
+	void getAttemptReviewReturnsSpeakingTranscriptAudioAndSavedAiResult() {
+		ExamSection speaking = speakingSection();
+		Question question = question(1, QuestionType.SPEAKING, speaking);
+		speaking.setQuestions(List.of(question));
+		TestAttempt attempt = reviewAttempt(20, 7, true, List.of(speaking));
+		UserResponse response = response(100, attempt, question, List.of());
+		response.setFileUrl("https://example.com/answer.wav");
+		response.setSpeechToTextTrans("I usually read on weekends.");
+		response.setAiScore(new BigDecimal("6.0"));
+		SkillResult result = skillResult(attempt, SkillType.SPEAKING, "6.5",
+				"{\"feedback\":{\"strengths\":[\"Fluent\"],\"weaknesses\":[],\"improvements\":[\"Add details\"]}}");
+		when(this.testAttemptRepository.findById(20)).thenReturn(Optional.of(attempt));
+		when(this.userResponseRepository.findByAttemptId(20)).thenReturn(List.of(response));
+		when(this.skillResultRepository.findByAttemptId(20)).thenReturn(List.of(result));
+
+		AttemptReviewResponse review = this.service.getAttemptReview(20, 7);
+
+		assertEquals(SkillType.SPEAKING, review.sections().get(0).skillType());
+		assertEquals(new BigDecimal("6.5"), review.sections().get(0).bandScore());
+		assertEquals("I usually read on weekends.", review.sections().get(0).questions().get(0).transcript());
+		assertEquals("https://example.com/answer.wav", review.sections().get(0).questions().get(0).audioUrl());
+		assertEquals(new BigDecimal("6.0"), review.sections().get(0).questions().get(0).aiScore());
+		verify(this.aiService, never()).evaluateSpeakingAttempt(any());
+	}
+
+	@Test
+	void getAttemptReviewReturnsPremiumSpeakingBandWithoutTranscriptRequirement() {
+		ExamSection speaking = speakingSection();
+		Question question = question(1, QuestionType.SPEAKING, speaking);
+		speaking.setQuestions(List.of(question));
+		TestAttempt attempt = reviewAttempt(20, 7, true, List.of(speaking));
+		MockSession session = new MockSession();
+		attempt.setSession(session);
+		UserResponse response = response(100, attempt, question, List.of());
+		response.setFileUrl("https://example.com/premium-answer.wav");
+		SkillResult result = skillResult(attempt, SkillType.SPEAKING, "7.0", null);
+		when(this.testAttemptRepository.findById(20)).thenReturn(Optional.of(attempt));
+		when(this.userResponseRepository.findByAttemptId(20)).thenReturn(List.of(response));
+		when(this.skillResultRepository.findByAttemptId(20)).thenReturn(List.of(result));
+
+		AttemptReviewResponse review = this.service.getAttemptReview(20, 7);
+
+		assertEquals(new BigDecimal("7.0"), review.sections().get(0).bandScore());
+		assertNull(review.sections().get(0).questions().get(0).transcript());
+		assertEquals("https://example.com/premium-answer.wav", review.sections().get(0).questions().get(0).audioUrl());
+		assertTrue(review.sections().get(0).questions().get(0).answered());
+		verify(this.aiService, never()).evaluateSpeakingAttempt(any());
+	}
+
 	private TestAttempt premiumAttempt(MockSessionStatus status, LocalDateTime endTime) {
 		Exam exam = new Exam();
 		exam.setId(1);
@@ -388,6 +465,24 @@ class TestAttemptServiceImplTest {
 		return section;
 	}
 
+	private ExamSection writingSection() {
+		ExamSection section = new ExamSection();
+		section.setId(3);
+		section.setSkillType(SkillType.WRITING);
+		section.setSectionOrder(3);
+		section.setQuestions(List.of());
+		return section;
+	}
+
+	private ExamSection speakingSection() {
+		ExamSection section = new ExamSection();
+		section.setId(4);
+		section.setSkillType(SkillType.SPEAKING);
+		section.setSectionOrder(4);
+		section.setQuestions(List.of());
+		return section;
+	}
+
 	private Question question(Integer id, QuestionType type, ExamSection section) {
 		Question question = new Question();
 		question.setId(id);
@@ -422,6 +517,15 @@ class TestAttemptServiceImplTest {
 		}).toList();
 		response.setAnswers(choices);
 		return response;
+	}
+
+	private SkillResult skillResult(TestAttempt attempt, SkillType skillType, String bandScore, String aiAnalysis) {
+		SkillResult result = new SkillResult();
+		result.setAttempt(attempt);
+		result.setSkillType(skillType);
+		result.setBandScore(new BigDecimal(bandScore));
+		result.setAiAnalysis(aiAnalysis);
+		return result;
 	}
 
 	private void mockFinalizeDependencies() {

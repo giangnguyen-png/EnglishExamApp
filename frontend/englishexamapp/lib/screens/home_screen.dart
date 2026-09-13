@@ -139,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(user == null ? 'Home' : 'Xin chào, ${user.displayName}'),
+        title: Text('🏠'),
         actions: [
           IconButton(
             onPressed: _logout,

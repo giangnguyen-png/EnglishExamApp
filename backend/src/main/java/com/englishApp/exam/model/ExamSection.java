@@ -38,7 +38,7 @@ public class ExamSection {
 	@Enumerated(EnumType.STRING)
 	@Column(name = "skill_type")
 	private SkillType skillType;
-	@Column(name = "passage_content")
+	@Column(name = "passage_content", columnDefinition = "LONGTEXT")
 	private String passageContent;
 	@Column(name = "media_url")
 	private String mediaUrl;

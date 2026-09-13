@@ -166,7 +166,7 @@ class _PremiumIntroScreenState extends State<PremiumIntroScreen> {
                 Text(
                   isPremium
                       ? 'Premium đang hoạt động'
-                      : 'Thanh toán thử nghiệm qua MoMo Sandbox bằng thẻ ATM test',
+                      : 'Thanh toán Premium',
                   textAlign: TextAlign.center,
                 ),
                 if (isPremium && status!.expiresAt.isNotEmpty) ...[
@@ -206,10 +206,7 @@ class _PremiumIntroScreenState extends State<PremiumIntroScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Giao dịch Sandbox, không sử dụng tiền thật',
-                    textAlign: TextAlign.center,
-                  ),
+              
                   const SizedBox(height: 20),
                   FilledButton(
                     onPressed: _isCreatingPayment ? null : _createPayment,

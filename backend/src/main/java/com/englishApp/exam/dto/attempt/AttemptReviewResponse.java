@@ -1,5 +1,6 @@
 package com.englishApp.exam.dto.attempt;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import com.englishApp.exam.model.enums.QuestionType;
@@ -16,6 +17,8 @@ public record AttemptReviewResponse(
 			int sectionOrder,
 			String passageContent,
 			String mediaUrl,
+			BigDecimal bandScore,
+			String aiAnalysis,
 			List<QuestionReviewResponse> questions) {
 	}
 
@@ -27,6 +30,10 @@ public record AttemptReviewResponse(
 			String imageUrl,
 			boolean answered,
 			boolean correct,
+			String textResponse,
+			String transcript,
+			String audioUrl,
+			BigDecimal aiScore,
 			List<AnswerReviewResponse> answers) {
 	}
 

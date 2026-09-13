@@ -263,14 +263,20 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 				.stream()
 				.collect(Collectors.toMap(response -> response.getQuestion().getId(), Function.identity(),
 						(existing, replacement) -> existing));
-		List<SectionReviewResponse> sections = attempt.getExam().getExamSections().stream()
+		List<SkillResult> skillResults = this.skillResultRepository.findByAttemptId(attemptId);
+		Map<SkillType, SkillResult> skillResultByType = (skillResults == null ? List.<SkillResult>of() : skillResults)
+				.stream()
+				.collect(Collectors.toMap(SkillResult::getSkillType, Function.identity(),
+						(existing, replacement) -> existing));
+		List<SectionReviewResponse> sections = (attempt.getExam().getExamSections() == null
+				? List.<ExamSection>of() : attempt.getExam().getExamSections()).stream()
 				.filter(section -> isReviewableSkill(section.getSkillType()))
 				.sorted(Comparator.comparingInt(ExamSection::getSectionOrder))
-				.map(section -> toSectionReview(section, responseByQuestionId))
+				.map(section -> toSectionReview(section, responseByQuestionId, skillResultByType.get(section.getSkillType())))
 				.toList();
 		if (sections.isEmpty()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-					"Chỉ hỗ trợ xem lại bài Listening hoặc Reading.");
+					"Không có dữ liệu kỹ năng để xem lại.");
 		}
 
 		return new AttemptReviewResponse(attempt.getId(), attempt.getExam().getTitle(), sections);
@@ -287,17 +293,23 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 	}
 
 	private SectionReviewResponse toSectionReview(ExamSection section,
-			Map<Integer, UserResponse> responseByQuestionId) {
-		List<QuestionReviewResponse> questions = section.getQuestions().stream()
+			Map<Integer, UserResponse> responseByQuestionId, SkillResult skillResult) {
+		List<QuestionReviewResponse> questions = (section.getQuestions() == null
+				? List.<Question>of() : section.getQuestions()).stream()
 				.sorted(Comparator.comparingInt(Question::getOrderIndex))
 				.map(question -> toQuestionReview(question, responseByQuestionId.get(question.getId())))
 				.toList();
 		return new SectionReviewResponse(section.getId(), section.getSkillType(), section.getSectionOrder(),
-				section.getPassageContent(), section.getMediaUrl(), questions);
+				section.getPassageContent(), section.getMediaUrl(),
+				skillResult == null ? null : skillResult.getBandScore(),
+				skillResult == null ? null : skillResult.getAiAnalysis(), questions);
 	}
 
 	private QuestionReviewResponse toQuestionReview(Question question, UserResponse response) {
-		List<Answer> answers = question.getAnswers().stream()
+		if (!QuestionAnswerRules.usesChoiceAnswers(question.getQuestionType())) {
+			return toConstructedResponseReview(question, response);
+		}
+		List<Answer> answers = (question.getAnswers() == null ? List.<Answer>of() : question.getAnswers()).stream()
 				.sorted(Comparator.comparing(Answer::getId))
 				.toList();
 		Set<Integer> selectedAnswerIds = selectedAnswerIds(response);
@@ -312,7 +324,24 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 						selectedAnswerIds.contains(answer.getId()), answer.isCorrect(), answer.getExplanation()))
 				.toList();
 		return new QuestionReviewResponse(question.getId(), question.getContent(), question.getQuestionType(),
-				question.getOrderIndex(), question.getImageUrl(), answered, correct, answerResponses);
+				question.getOrderIndex(), question.getImageUrl(), answered, correct, null, null, null, null,
+				answerResponses);
+	}
+
+	private QuestionReviewResponse toConstructedResponseReview(Question question, UserResponse response) {
+		boolean writingAnswered = response != null && response.getTextContent() != null
+				&& !response.getTextContent().isBlank();
+		boolean speakingAnswered = response != null
+				&& ((response.getFileUrl() != null && !response.getFileUrl().isBlank())
+						|| (response.getSpeechToTextTrans() != null && !response.getSpeechToTextTrans().isBlank()));
+		boolean answered = writingAnswered || speakingAnswered;
+		return new QuestionReviewResponse(question.getId(), question.getContent(), question.getQuestionType(),
+				question.getOrderIndex(), question.getImageUrl(), answered, false,
+				response == null ? null : response.getTextContent(),
+				response == null ? null : response.getSpeechToTextTrans(),
+				response == null ? null : response.getFileUrl(),
+				response == null ? null : response.getAiScore(),
+				List.of());
 	}
 
 	private Set<Integer> selectedAnswerIds(UserResponse response) {
@@ -336,7 +365,8 @@ public class TestAttemptServiceImpl implements TestAttemptService {
 	}
 
 	private boolean isReviewableSkill(SkillType skillType) {
-		return skillType == SkillType.LISTENING || skillType == SkillType.READING;
+		return skillType == SkillType.LISTENING || skillType == SkillType.READING
+				|| skillType == SkillType.WRITING || skillType == SkillType.SPEAKING;
 	}
 
 	private void validateFreeNormalAttemptQuota(Integer userId) {

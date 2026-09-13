@@ -42,6 +42,16 @@ class AttemptReview {
           .toList(),
     );
   }
+
+  List<String> get skillTypes {
+    final ordered = <String>[];
+    for (final section in sections) {
+      if (!ordered.contains(section.skillType)) {
+        ordered.add(section.skillType);
+      }
+    }
+    return ordered;
+  }
 }
 
 class ReviewSection {
@@ -50,6 +60,8 @@ class ReviewSection {
   final int sectionOrder;
   final String passageContent;
   final String mediaUrl;
+  final double? bandScore;
+  final String aiAnalysis;
   final List<ReviewQuestion> questions;
 
   ReviewSection({
@@ -58,6 +70,8 @@ class ReviewSection {
     required this.sectionOrder,
     required this.passageContent,
     required this.mediaUrl,
+    required this.bandScore,
+    required this.aiAnalysis,
     required this.questions,
   });
 
@@ -69,6 +83,8 @@ class ReviewSection {
       sectionOrder: (json['sectionOrder'] as int?) ?? 0,
       passageContent: (json['passageContent'] as String?) ?? '',
       mediaUrl: (json['mediaUrl'] as String?) ?? '',
+      bandScore: _toDouble(json['bandScore']),
+      aiAnalysis: (json['aiAnalysis'] as String?) ?? '',
       questions: questionsJson
           .map((item) => ReviewQuestion.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -84,6 +100,10 @@ class ReviewQuestion {
   final String? imageUrl;
   final bool answered;
   final bool correct;
+  final String textResponse;
+  final String transcript;
+  final String? audioUrl;
+  final double? aiScore;
   final List<ReviewAnswer> answers;
 
   ReviewQuestion({
@@ -94,6 +114,10 @@ class ReviewQuestion {
     this.imageUrl,
     required this.answered,
     required this.correct,
+    required this.textResponse,
+    required this.transcript,
+    this.audioUrl,
+    required this.aiScore,
     required this.answers,
   });
 
@@ -107,6 +131,10 @@ class ReviewQuestion {
       imageUrl: _optionalString(json['imageUrl']),
       answered: (json['answered'] as bool?) ?? false,
       correct: (json['correct'] as bool?) ?? false,
+      textResponse: (json['textResponse'] as String?) ?? '',
+      transcript: (json['transcript'] as String?) ?? '',
+      audioUrl: _optionalString(json['audioUrl']),
+      aiScore: _toDouble(json['aiScore']),
       answers: answersJson
           .map((item) => ReviewAnswer.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -143,4 +171,14 @@ class ReviewAnswer {
 String? _optionalString(dynamic value) {
   final text = value?.toString().trim();
   return text == null || text.isEmpty ? null : text;
+}
+
+double? _toDouble(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is num) {
+    return value.toDouble();
+  }
+  return double.tryParse(value.toString());
 }
