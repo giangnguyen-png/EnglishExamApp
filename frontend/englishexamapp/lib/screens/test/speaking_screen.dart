@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 import '../../config/app_colors.dart';
 import '../../models/attempt.dart';
 import '../../models/exam.dart';
+import '../../models/mock_session.dart';
 import '../../models/result.dart';
 import '../../services/api_service.dart';
 import '../../services/attempt_service.dart';
@@ -18,8 +19,21 @@ import '../result/result_screen.dart';
 class SpeakingScreen extends StatefulWidget {
   final Exam exam;
   final Attempt attempt;
+  final Future<void> Function(int attemptId, int questionId, String audioPath)?
+  submitSpeakingOverride;
+  final Future<AttemptResult> Function(int attemptId)? submitAttemptOverride;
+  final Future<AttemptResult> Function(int attemptId)? forceSubmitOverride;
+  final Future<MockSession> Function(int sessionId)? getSessionOverride;
 
-  const SpeakingScreen({super.key, required this.exam, required this.attempt});
+  const SpeakingScreen({
+    super.key,
+    required this.exam,
+    required this.attempt,
+    this.submitSpeakingOverride,
+    this.submitAttemptOverride,
+    this.forceSubmitOverride,
+    this.getSessionOverride,
+  });
 
   @override
   State<SpeakingScreen> createState() => _SpeakingScreenState();
@@ -194,11 +208,9 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
     });
 
     try {
-      await _responseService.submitSpeaking(
-        widget.attempt.attemptId,
-        question.id,
-        path,
-      );
+      final submitSpeaking =
+          widget.submitSpeakingOverride ?? _responseService.submitSpeaking;
+      await submitSpeaking(widget.attempt.attemptId, question.id, path);
 
       if (!mounted) return false;
       setState(() {
@@ -288,13 +300,17 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
       },
     );
 
+    if (!mounted) return;
     if (confirmed == true) {
-      _submitAttempt();
+      await _submitAttempt();
     }
   }
 
-  Future<void> _submitAttempt() async {
-    if (_sessionFinished || _isSubmitting) {
+  Future<void> _submitAttempt({bool fromTimedQuestion = false}) async {
+    if (_sessionFinished ||
+        _isSubmitting ||
+        _uploadingQuestionId != null ||
+        (!fromTimedQuestion && _isFinishingTimedQuestion)) {
       return;
     }
     _questionTimer?.cancel();
@@ -330,7 +346,9 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
         }
       }
       if (!mounted) return;
-      final AttemptResult result = await _attemptService.submitAttempt(
+      final submitAttempt =
+          widget.submitAttemptOverride ?? _attemptService.submitAttempt;
+      final AttemptResult result = await submitAttempt(
         widget.attempt.attemptId,
       );
       if (!mounted) return;
@@ -456,9 +474,9 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
         Text(
           'Speaking',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: AppColors.speaking,
-                fontWeight: FontWeight.w700,
-              ),
+            color: AppColors.speaking,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 8),
         LinearProgressIndicator(
@@ -471,106 +489,100 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
         AccentCard(
           color: AppColors.speaking,
           child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Câu hỏi:', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(question.content),
+              _buildQuestionImage(question),
+              const SizedBox(height: 16),
+              Center(
+                child: Text(
+                  _formatSeconds(_remainingSeconds),
+                  style: Theme.of(context).textTheme.displaySmall,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: Text(_speakingStatusText(isRecording, isUploading)),
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: Icon(
+                  isRecording ? Icons.fiber_manual_record : Icons.mic,
+                  size: 56,
+                  color: isRecording
+                      ? Theme.of(context).colorScheme.error
+                      : AppColors.speaking,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (isRecording) ...[
+                const LinearProgressIndicator(),
+                const SizedBox(height: 8),
+                const Text('Đang ghi âm...'),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: _isSubmitting || _sessionFinished
+                      ? null
+                      : () {
+                          _questionTimer?.cancel();
+                          _stopRecording(question);
+                        },
+                  icon: const Icon(Icons.stop),
+                  label: const Text('Dừng'),
+                ),
+              ] else if (_isPreparing) ...[
+                FilledButton.icon(
+                  onPressed: isBusy || _isSubmitting || _sessionFinished
+                      ? null
+                      : () => _beginAnswerPhase(question, answerSeconds),
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Bắt đầu trả lời'),
+                ),
+              ] else ...[
+                FilledButton.icon(
+                  onPressed:
+                      !isBusy &&
+                          !_isReadingQuestion &&
+                          !_isPreparing &&
+                          !_isSubmitting &&
+                          !_sessionFinished
+                      ? () => _startRecording(question)
+                      : null,
+                  icon: const Icon(Icons.mic),
+                  label: Text(hasAudio ? 'Ghi âm lại' : 'Bắt đầu ghi âm'),
+                ),
+              ],
+              if (_uploadError != null) ...[
+                const SizedBox(height: 12),
                 Text(
-                  'Câu hỏi:',
-                  style: Theme.of(context).textTheme.titleMedium,
+                  'Upload lỗi: $_uploadError',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
-                const SizedBox(height: 8),
-                Text(question.content),
-                _buildQuestionImage(question),
-                const SizedBox(height: 16),
-                Center(
-                  child: Text(
-                    _formatSeconds(_remainingSeconds),
-                    style: Theme.of(context).textTheme.displaySmall,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Center(
-                  child: Text(_speakingStatusText(isRecording, isUploading)),
-                ),
-                const SizedBox(height: 16),
-                Center(
-                  child: Icon(
-                    isRecording ? Icons.fiber_manual_record : Icons.mic,
-                    size: 56,
-                    color: isRecording
-                        ? Theme.of(context).colorScheme.error
-                        : AppColors.speaking,
-                  ),
+              ],
+              if (hasAudio && !isRecording) ...[
+                const SizedBox(height: 12),
+                Chip(
+                  avatar: Icon(isUploaded ? Icons.check : Icons.mic),
+                  label: Text(isUploaded ? 'Đã gửi câu trả lời' : 'Đã ghi âm'),
                 ),
                 const SizedBox(height: 12),
-                if (isRecording) ...[
-                  const LinearProgressIndicator(),
-                  const SizedBox(height: 8),
-                  const Text('Đang ghi âm...'),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: _isSubmitting || _sessionFinished
-                        ? null
-                        : () {
-                            _questionTimer?.cancel();
-                            _stopRecording(question);
-                          },
-                    icon: const Icon(Icons.stop),
-                    label: const Text('Dừng'),
-                  ),
-                ] else if (_isPreparing) ...[
-                  FilledButton.icon(
-                    onPressed: isBusy || _isSubmitting || _sessionFinished
-                        ? null
-                        : () => _beginAnswerPhase(question, answerSeconds),
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Bắt đầu trả lời'),
-                  ),
-                ] else ...[
-                  FilledButton.icon(
-                    onPressed: !isBusy &&
-                            !_isReadingQuestion &&
-                            !_isPreparing &&
-                            !_isSubmitting &&
-                            !_sessionFinished
-                        ? () => _startRecording(question)
-                        : null,
-                    icon: const Icon(Icons.mic),
-                    label: Text(hasAudio ? 'Ghi âm lại' : 'Bắt đầu ghi âm'),
-                  ),
-                ],
-                if (_uploadError != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    'Upload lỗi: $_uploadError',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ],
-                if (hasAudio && !isRecording) ...[
-                  const SizedBox(height: 12),
-                  Chip(
-                    avatar: Icon(isUploaded ? Icons.check : Icons.mic),
-                    label: Text(
-                      isUploaded ? 'Đã gửi câu trả lời' : 'Đã ghi âm',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: isUploading || _isSubmitting || _sessionFinished
-                        ? null
-                        : () => _uploadSpeaking(question),
-                    icon: isUploading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.upload),
-                    label: const Text('Gửi câu trả lời'),
-                  ),
-                ],
+                FilledButton.icon(
+                  onPressed: isUploading || _isSubmitting || _sessionFinished
+                      ? null
+                      : () => _uploadSpeaking(question),
+                  icon: isUploading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.upload),
+                  label: const Text('Gửi câu trả lời'),
+                ),
               ],
+            ],
           ),
         ),
         const SizedBox(height: 16),
@@ -741,15 +753,26 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
     setState(() {
       _isFinishingTimedQuestion = true;
     });
-    if (_recordingQuestionId == question.id) {
-      await _stopRecording(question);
+    try {
+      if (_recordingQuestionId == question.id) {
+        await _stopRecording(question);
+      }
+      if (!mounted || _isSubmitting) return;
+
+      final isLastQuestion = _isLastSpeakingQuestion(question);
+      final uploaded = await _uploadSpeaking(question, autoAdvance: true);
+      if (!mounted || _isSubmitting) return;
+
+      if (uploaded && isLastQuestion) {
+        await _submitAttempt(fromTimedQuestion: true);
+      }
+    } finally {
+      if (mounted && !_isSubmitting) {
+        setState(() {
+          _isFinishingTimedQuestion = false;
+        });
+      }
     }
-    if (!mounted || _isSubmitting) return;
-    await _uploadSpeaking(question, autoAdvance: true);
-    if (!mounted) return;
-    setState(() {
-      _isFinishingTimedQuestion = false;
-    });
   }
 
   void _goToNextQuestionAfterUpload() {
@@ -760,6 +783,11 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
       });
       _startQuestionFlow(_speakingQuestions[_questionIndex]);
     }
+  }
+
+  bool _isLastSpeakingQuestion(Question question) {
+    return _speakingQuestions.isNotEmpty &&
+        _speakingQuestions.last.id == question.id;
   }
 
   int _validPreparationSeconds(Question question, int duration) {
@@ -848,7 +876,9 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
       return;
     }
     try {
-      final session = await _mockSessionService.getSession(sessionId);
+      final getSession =
+          widget.getSessionOverride ?? _mockSessionService.getSession;
+      final session = await getSession(sessionId);
       if (session.status == 'COMPLETED') {
         await _handleSessionCompleted();
       }
@@ -858,7 +888,7 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
   }
 
   Future<void> _handleSessionCompleted() async {
-    if (_sessionFinished) {
+    if (_sessionFinished || _isSubmitting) {
       return;
     }
     if (_uploadingQuestionId != null) {
@@ -884,9 +914,9 @@ class _SpeakingScreenState extends State<SpeakingScreen> {
         ),
       ),
     );
-    final AttemptResult result = await _attemptService.forceSubmitAttempt(
-      widget.attempt.attemptId,
-    );
+    final forceSubmit =
+        widget.forceSubmitOverride ?? _attemptService.forceSubmitAttempt;
+    final AttemptResult result = await forceSubmit(widget.attempt.attemptId);
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,

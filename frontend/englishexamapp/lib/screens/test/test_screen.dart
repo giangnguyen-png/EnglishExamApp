@@ -45,6 +45,8 @@ class _TestScreenState extends State<TestScreen> {
   final Set<int> _savingQuestionIds = {};
   final Map<int, int> _listeningPlayCounts = {};
   final Map<int, bool> _listeningCompleted = {};
+  final Map<String, Duration> _skillRemainingTimes = {};
+  final Set<String> _expiredSkillTypes = {};
   StreamSubscription<PlayerState>? _playerStateSubscription;
   Timer? _skillTimer;
   Timer? _sessionPollingTimer;
@@ -97,7 +99,8 @@ class _TestScreenState extends State<TestScreen> {
 
   @override
   void dispose() {
-    _skillTimer?.cancel();
+    _saveActiveSkillRemainingTime();
+    _cancelSkillTimer();
     _sessionPollingTimer?.cancel();
     _playerStateSubscription?.cancel();
     _audioPlayer.dispose();
@@ -173,6 +176,10 @@ class _TestScreenState extends State<TestScreen> {
     if (_sectionIndex > 0) {
       final currentSection = _practiceSections[_sectionIndex];
       final nextSection = _practiceSections[_sectionIndex - 1];
+      if (_isSkillExpired(nextSection.skillType)) {
+        _showExpiredSkillMessage(nextSection.skillType);
+        return;
+      }
       _stopAudioIfLeavingListening(currentSection, nextSection);
       setState(() {
         _sectionIndex--;
@@ -213,6 +220,10 @@ class _TestScreenState extends State<TestScreen> {
     }
     final currentSection = _practiceSections[_sectionIndex];
     final nextSection = _practiceSections[item.sectionIndex];
+    if (_isSkillExpired(nextSection.skillType)) {
+      _showExpiredSkillMessage(nextSection.skillType);
+      return;
+    }
     _stopAudioIfLeavingListening(currentSection, nextSection);
     setState(() {
       _sectionIndex = item.sectionIndex;
@@ -257,21 +268,30 @@ class _TestScreenState extends State<TestScreen> {
     );
   }
 
-  Future<void> _openWriting() async {
+  Future<void> _openWriting({bool replaceCurrent = false}) async {
     if (_sessionFinished) {
       return;
     }
-    _skillTimer?.cancel();
+    _saveActiveSkillRemainingTime();
+    _cancelSkillTimer();
     _sessionPollingTimer?.cancel();
     await _stopListeningAudio();
     if (!mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            WritingScreen(exam: widget.exam, attempt: widget.attempt),
+    final route = MaterialPageRoute<void>(
+      builder: (_) => WritingScreen(
+        exam: widget.exam,
+        attempt: widget.attempt,
+        initialRemainingTime: _remainingTimeForSkill('WRITING'),
+        onRemainingTimeChanged: (remainingTime) {
+          _skillRemainingTimes['WRITING'] = remainingTime;
+        },
       ),
     );
+    if (replaceCurrent) {
+      await Navigator.pushReplacement(context, route);
+      return;
+    }
+    await Navigator.push(context, route);
     if (mounted && !_sessionFinished) {
       _syncSkillTimer();
       _startSessionPolling();
@@ -316,6 +336,11 @@ class _TestScreenState extends State<TestScreen> {
     final isLastPracticeQuestion =
         _sectionIndex == _practiceSections.length - 1 &&
         _questionIndex == questions.length - 1;
+    final isCurrentSkillExpired = _isSkillExpired(section.skillType);
+    final canGoPrevious =
+        !isCurrentSkillExpired &&
+        !isFirstPracticeQuestion &&
+        !_previousQuestionWouldEnterExpiredSkill();
 
     return Scaffold(
       appBar: AppBar(
@@ -337,9 +362,7 @@ class _TestScreenState extends State<TestScreen> {
           const SizedBox(height: 6),
           Text(
             _skillLabel(section.skillType),
-            style: Theme.of(context)
-                .textTheme
-                .headlineSmall
+            style: Theme.of(context).textTheme.headlineSmall
                 ?.copyWith(color: skillColor, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
@@ -398,7 +421,7 @@ class _TestScreenState extends State<TestScreen> {
                 ),
                 _buildQuestionImage(question),
                 const SizedBox(height: 12),
-                ..._buildAnswerOptions(question),
+                ..._buildAnswerOptions(question, isCurrentSkillExpired),
                 if (_savingQuestionIds.contains(question.id)) ...[
                   const SizedBox(height: 8),
                   const LinearProgressIndicator(),
@@ -413,8 +436,9 @@ class _TestScreenState extends State<TestScreen> {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: _sessionFinished ||
-                          isFirstPracticeQuestion ||
+                  onPressed:
+                      _sessionFinished ||
+                          !canGoPrevious ||
                           isSavingCurrentQuestion
                       ? null
                       : _previousQuestion,
@@ -424,12 +448,13 @@ class _TestScreenState extends State<TestScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  onPressed: _sessionFinished || isSavingCurrentQuestion
+                  onPressed:
+                      _sessionFinished ||
+                          isCurrentSkillExpired ||
+                          isSavingCurrentQuestion
                       ? null
                       : _nextQuestion,
-                  child: Text(
-                    isLastPracticeQuestion ? 'Tiếp tục' : 'Sau',
-                  ),
+                  child: Text(isLastPracticeQuestion ? 'Tiếp tục' : 'Sau'),
                 ),
               ),
             ],
@@ -457,10 +482,7 @@ class _TestScreenState extends State<TestScreen> {
             children: [
               const Icon(Icons.headphones),
               const SizedBox(width: 8),
-              Text(
-                'Bài nghe',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              Text('Bài nghe', style: Theme.of(context).textTheme.titleMedium),
             ],
           ),
           const SizedBox(height: 8),
@@ -480,12 +502,7 @@ class _TestScreenState extends State<TestScreen> {
                   )
                 : Icon(_audioButtonIcon(isPlaying, isPaused, hasNoPlayLeft)),
             label: Text(
-              _audioButtonText(
-                isPlaying,
-                isPaused,
-                isCompleted,
-                hasNoPlayLeft,
-              ),
+              _audioButtonText(isPlaying, isPaused, isCompleted, hasNoPlayLeft),
             ),
           ),
         ],
@@ -635,10 +652,13 @@ class _TestScreenState extends State<TestScreen> {
     return 'Bắt đầu nghe';
   }
 
-  List<Widget> _buildAnswerOptions(Question question) {
+  List<Widget> _buildAnswerOptions(Question question, bool isSkillLocked) {
     final selected = _selectedAnswers[question.id] ?? {};
     final isMultiple = question.questionType == 'MULTIPLE_CHOICE';
-    final isSaving = _savingQuestionIds.contains(question.id) || _sessionFinished;
+    final isSaving =
+        _savingQuestionIds.contains(question.id) ||
+        _sessionFinished ||
+        isSkillLocked;
 
     if (question.answers.isEmpty) {
       return [const Text('Câu hỏi này chưa có đáp án lựa chọn.')];
@@ -811,37 +831,53 @@ class _TestScreenState extends State<TestScreen> {
   }
 
   void _startSkillTimer(String skillType) {
-    _skillTimer?.cancel();
+    _cancelSkillTimer();
     _activeSkillType = skillType;
-    _remainingTime = IeltsTime.forSkill(skillType);
+    _remainingTime = _remainingTimeForSkill(skillType);
+    _skillRemainingTimes[skillType] = _remainingTime;
     if (_remainingTime == Duration.zero) {
       return;
     }
     _skillTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
+      final activeSkillType = _activeSkillType;
       if (_remainingTime.inSeconds <= 1) {
         setState(() {
           _remainingTime = Duration.zero;
+          if (activeSkillType != null) {
+            _skillRemainingTimes[activeSkillType] = Duration.zero;
+          }
         });
         _handleSkillTimeExpired();
         return;
       }
       setState(() {
         _remainingTime -= const Duration(seconds: 1);
+        if (activeSkillType != null) {
+          _skillRemainingTimes[activeSkillType] = _remainingTime;
+        }
       });
     });
   }
 
   void _syncSkillTimer() {
     final skillType = _practiceSections[_sectionIndex].skillType;
-    if (skillType != _activeSkillType) {
-      _startSkillTimer(skillType);
+    if (skillType == _activeSkillType && _skillTimer != null) {
+      return;
     }
+    if (skillType != _activeSkillType) {
+      _saveActiveSkillRemainingTime();
+    }
+    _startSkillTimer(skillType);
   }
 
   void _handleSkillTimeExpired() {
-    _skillTimer?.cancel();
     final currentSkill = _activeSkillType;
+    _cancelSkillTimer();
+    if (currentSkill != null) {
+      _skillRemainingTimes[currentSkill] = Duration.zero;
+      _expiredSkillTypes.add(currentSkill);
+    }
     if (currentSkill == 'LISTENING') {
       final nextReadingIndex = _practiceSections.indexWhere(
         (section) => section.skillType == 'READING',
@@ -856,7 +892,45 @@ class _TestScreenState extends State<TestScreen> {
         return;
       }
     }
-    _openWriting();
+    _openWriting(replaceCurrent: true);
+  }
+
+  void _cancelSkillTimer() {
+    _skillTimer?.cancel();
+    _skillTimer = null;
+  }
+
+  void _saveActiveSkillRemainingTime() {
+    final activeSkillType = _activeSkillType;
+    if (activeSkillType != null) {
+      _skillRemainingTimes[activeSkillType] = _remainingTime;
+    }
+  }
+
+  Duration _remainingTimeForSkill(String skillType) {
+    return _skillRemainingTimes[skillType] ?? IeltsTime.forSkill(skillType);
+  }
+
+  bool _isSkillExpired(String skillType) {
+    return _expiredSkillTypes.contains(skillType);
+  }
+
+  bool _previousQuestionWouldEnterExpiredSkill() {
+    if (_questionIndex > 0 || _sectionIndex == 0) {
+      return false;
+    }
+    final previousSection = _practiceSections[_sectionIndex - 1];
+    return _isSkillExpired(previousSection.skillType);
+  }
+
+  void _showExpiredSkillMessage(String skillType) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${_skillLabel(skillType)} đã hết thời gian, bạn không thể quay lại.',
+        ),
+      ),
+    );
   }
 
   void _startSessionPolling() {
@@ -892,7 +966,7 @@ class _TestScreenState extends State<TestScreen> {
       _sessionFinished = true;
     });
     _sessionPollingTimer?.cancel();
-    _skillTimer?.cancel();
+    _cancelSkillTimer();
     await _stopListeningAudio();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -973,9 +1047,8 @@ class _QuestionNavigatorBar extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Câu $currentNumber / $totalCount',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
               Text('$answeredCount/$totalCount đã làm'),
@@ -1050,8 +1123,9 @@ class _QuestionNavigatorSheet extends StatelessWidget {
                   final isCurrent =
                       item.sectionIndex == currentSectionIndex &&
                       item.questionIndex == currentQuestionIndex;
-                  final isAnswered =
-                      answeredQuestionIds.contains(item.question.id);
+                  final isAnswered = answeredQuestionIds.contains(
+                    item.question.id,
+                  );
                   return _QuestionNavButton(
                     number: item.number,
                     isCurrent: isCurrent,
@@ -1143,13 +1217,13 @@ class _QuestionNavButton extends StatelessWidget {
     final borderColor = isCurrent
         ? accentColor
         : isAnswered
-            ? AppColors.success
-            : Theme.of(context).colorScheme.outlineVariant;
+        ? AppColors.success
+        : Theme.of(context).colorScheme.outlineVariant;
     final backgroundColor = isCurrent
         ? AppColors.soft(accentColor)
         : isAnswered
-            ? AppColors.soft(AppColors.success)
-            : Theme.of(context).colorScheme.surface;
+        ? AppColors.soft(AppColors.success)
+        : Theme.of(context).colorScheme.surface;
     final textColor = isCurrent
         ? accentColor
         : Theme.of(context).colorScheme.onSurface;
@@ -1158,10 +1232,7 @@ class _QuestionNavButton extends StatelessWidget {
       color: backgroundColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: borderColor,
-          width: isCurrent ? 2 : 1,
-        ),
+        side: BorderSide(color: borderColor, width: isCurrent ? 2 : 1),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),

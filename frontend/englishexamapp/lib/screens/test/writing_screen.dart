@@ -18,8 +18,16 @@ import 'speaking_screen.dart';
 class WritingScreen extends StatefulWidget {
   final Exam exam;
   final Attempt attempt;
+  final Duration? initialRemainingTime;
+  final ValueChanged<Duration>? onRemainingTimeChanged;
 
-  const WritingScreen({super.key, required this.exam, required this.attempt});
+  const WritingScreen({
+    super.key,
+    required this.exam,
+    required this.attempt,
+    this.initialRemainingTime,
+    this.onRemainingTimeChanged,
+  });
 
   @override
   State<WritingScreen> createState() => _WritingScreenState();
@@ -36,13 +44,14 @@ class _WritingScreenState extends State<WritingScreen> {
   late final List<Question> _writingQuestions;
   Timer? _timer;
   Timer? _sessionPollingTimer;
-  Duration _remainingTime = IeltsTime.writing;
+  Duration _remainingTime = Duration.zero;
   bool _isSaving = false;
   bool _sessionFinished = false;
 
   @override
   void initState() {
     super.initState();
+    _remainingTime = widget.initialRemainingTime ?? IeltsTime.writing;
     _writingQuestions =
         widget.exam.sections
             .where((section) => section.skillType == 'WRITING')
@@ -59,7 +68,8 @@ class _WritingScreenState extends State<WritingScreen> {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _saveRemainingTime();
+    _cancelTimer();
     _sessionPollingTimer?.cancel();
     for (final timer in _autosaveTimers.values) {
       timer.cancel();
@@ -70,8 +80,11 @@ class _WritingScreenState extends State<WritingScreen> {
     super.dispose();
   }
 
-  Future<void> _saveWriting({bool requireAllAnswers = true}) async {
-    if (_sessionFinished) {
+  Future<void> _saveWriting({
+    bool requireAllAnswers = true,
+    bool replaceWithSpeaking = false,
+  }) async {
+    if (_sessionFinished || _isSaving) {
       return;
     }
     if (requireAllAnswers) {
@@ -108,15 +121,18 @@ class _WritingScreenState extends State<WritingScreen> {
       }
 
       if (!mounted) return;
-      _timer?.cancel();
+      _saveRemainingTime();
+      _cancelTimer();
       _sessionPollingTimer?.cancel();
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              SpeakingScreen(exam: widget.exam, attempt: widget.attempt),
-        ),
+      final route = MaterialPageRoute<void>(
+        builder: (_) =>
+            SpeakingScreen(exam: widget.exam, attempt: widget.attempt),
       );
+      if (replaceWithSpeaking) {
+        await Navigator.pushReplacement(context, route);
+        return;
+      }
+      await Navigator.push(context, route);
       if (mounted && !_sessionFinished) {
         _startTimer();
         _startSessionPolling();
@@ -139,7 +155,8 @@ class _WritingScreenState extends State<WritingScreen> {
     if (_sessionFinished) {
       return;
     }
-    _timer?.cancel();
+    _saveRemainingTime();
+    _cancelTimer();
     _sessionPollingTimer?.cancel();
     await Navigator.push(
       context,
@@ -188,13 +205,10 @@ class _WritingScreenState extends State<WritingScreen> {
               children: [
                 Text(
                   'Writing',
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineSmall
-                      ?.copyWith(
-                        color: AppColors.writing,
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: AppColors.writing,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text('Thời gian còn lại: ${_formatDuration(_remainingTime)}'),
@@ -202,7 +216,10 @@ class _WritingScreenState extends State<WritingScreen> {
                 ..._writingQuestions.map(_buildWritingTask),
                 const SizedBox(height: 12),
                 FilledButton.icon(
-                  onPressed: _isSaving || _sessionFinished
+                  onPressed:
+                      _isSaving ||
+                          _sessionFinished ||
+                          _remainingTime == Duration.zero
                       ? null
                       : () => _saveWriting(),
                   icon: _isSaving
@@ -221,50 +238,51 @@ class _WritingScreenState extends State<WritingScreen> {
 
   Widget _buildWritingTask(Question question) {
     final controller = _controllers[question.id]!;
+    final isWritingLocked = _remainingTime == Duration.zero;
 
     return AccentCard(
       color: AppColors.writing,
       margin: const EdgeInsets.only(bottom: 16),
       child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Writing Task ${_taskNumber(question)}',
-              style: Theme.of(context).textTheme.titleLarge,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Writing Task ${_taskNumber(question)}',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          AccentCard(
+            color: AppColors.writing,
+            padding: const EdgeInsets.all(12),
+            child: Text(question.content),
+          ),
+          _buildQuestionImage(question),
+          const SizedBox(height: 12),
+          Text(
+            'Bài viết của bạn',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: controller,
+            enabled: !_sessionFinished && !isWritingLocked,
+            maxLines: null,
+            minLines: 8,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: 'Nhập bài viết của bạn...',
             ),
-            const SizedBox(height: 8),
-            AccentCard(
-              color: AppColors.writing,
-              padding: const EdgeInsets.all(12),
-              child: Text(question.content),
-            ),
-            _buildQuestionImage(question),
-            const SizedBox(height: 12),
-            Text(
-              'Bài viết của bạn',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              enabled: !_sessionFinished,
-              maxLines: null,
-              minLines: 8,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Nhập bài viết của bạn...',
-              ),
-              onChanged: (_) {
-                _scheduleWritingAutosave(question);
-                setState(() {});
-              },
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Chip(label: Text('Số từ: ${_wordCount(controller.text)}')),
-            ),
-          ],
+            onChanged: (_) {
+              _scheduleWritingAutosave(question);
+              setState(() {});
+            },
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Chip(label: Text('Số từ: ${_wordCount(controller.text)}')),
+          ),
+        ],
       ),
     );
   }
@@ -315,20 +333,26 @@ class _WritingScreenState extends State<WritingScreen> {
   }
 
   void _startTimer() {
-    _timer?.cancel();
+    _cancelTimer();
+    _saveRemainingTime();
+    if (_remainingTime == Duration.zero) {
+      return;
+    }
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       if (_remainingTime.inSeconds <= 1) {
         setState(() {
           _remainingTime = Duration.zero;
         });
-        _timer?.cancel();
-        _saveWriting(requireAllAnswers: false);
+        _saveRemainingTime();
+        _cancelTimer();
+        _saveWriting(requireAllAnswers: false, replaceWithSpeaking: true);
         return;
       }
       setState(() {
         _remainingTime -= const Duration(seconds: 1);
       });
+      _saveRemainingTime();
     });
   }
 
@@ -343,7 +367,9 @@ class _WritingScreenState extends State<WritingScreen> {
   }
 
   Future<void> _saveWritingDraft(Question question) async {
-    if (!mounted || _sessionFinished || _draftSavingQuestionIds.contains(question.id)) {
+    if (!mounted ||
+        _sessionFinished ||
+        _draftSavingQuestionIds.contains(question.id)) {
       return;
     }
     setState(() {
@@ -414,7 +440,8 @@ class _WritingScreenState extends State<WritingScreen> {
       _isSaving = true;
     });
     _sessionPollingTimer?.cancel();
-    _timer?.cancel();
+    _saveRemainingTime();
+    _cancelTimer();
     _cancelAutosaveTimers();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -440,6 +467,15 @@ class _WritingScreenState extends State<WritingScreen> {
       timer.cancel();
     }
     _autosaveTimers.clear();
+  }
+
+  void _cancelTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void _saveRemainingTime() {
+    widget.onRemainingTimeChanged?.call(_remainingTime);
   }
 
   String _formatDuration(Duration duration) {
